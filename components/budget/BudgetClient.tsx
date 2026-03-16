@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Plus, X } from "lucide-react"
+import { Plus, X, ChevronDown, ChevronRight } from "lucide-react"
 import type { BudgetItem, Vendor } from "@/types/database"
 
 interface Props {
@@ -24,6 +24,11 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
   const [editItem, setEditItem] = useState<BudgetItem | null>(null)
   const [formData, setFormData] = useState<Partial<BudgetItem>>(EMPTY_ITEM)
   const [saving, setSaving] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [categoryModal, setCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [categoryLocked, setCategoryLocked] = useState(false)
+  const categoryInputRef = useRef<HTMLInputElement>(null)
 
   const conv = (eur: number) => currency === "GBP" ? eur * fxRate : eur
   const sym  = currency === "GBP" ? "£" : "€"
@@ -46,8 +51,41 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
     return () => { supabase.removeChannel(ch) }
   }, [supabase])
 
-  function openAdd() { setEditItem(null); setFormData(EMPTY_ITEM); setShowModal(true) }
-  function openEdit(i: BudgetItem) { setEditItem(i); setFormData({ ...i }); setShowModal(true) }
+  function toggleCollapse(category: string) {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
+
+  function openAdd(category?: string, locked = false) {
+    setEditItem(null)
+    setFormData({ ...EMPTY_ITEM, category: category ?? "" })
+    setCategoryLocked(locked)
+    setShowModal(true)
+  }
+
+  function openEdit(i: BudgetItem) {
+    setEditItem(i)
+    setFormData({ ...i })
+    setCategoryLocked(false)
+    setShowModal(true)
+  }
+
+  function openAddCategory() {
+    setNewCategoryName("")
+    setCategoryModal(true)
+    setTimeout(() => categoryInputRef.current?.focus(), 50)
+  }
+
+  function confirmNewCategory() {
+    const name = newCategoryName.trim()
+    if (!name) return
+    setCategoryModal(false)
+    openAdd(name, true)
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -81,6 +119,8 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
     }, {} as Record<string, BudgetItem[]>)
   }, [items])
 
+  const existingCategories = useMemo(() => Object.keys(grouped).sort(), [grouped])
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -99,8 +139,8 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
               </button>
             ))}
           </div>
-          <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium" style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
-            <Plus size={15} /> Add line
+          <button onClick={openAddCategory} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium" style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
+            <Plus size={15} /> Add category
           </button>
         </div>
       </div>
@@ -125,55 +165,116 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
       </div>
 
       {/* Line items by category */}
-      {Object.entries(grouped).map(([category, catItems]) => (
-        <div key={category} className="mb-6">
-          <h2 className="text-lg font-medium mb-2 px-1" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
-            {category}
-          </h2>
-          <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--color-blush)" }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--color-sage-light)" }}>
-                  {["Description", "Vendor", "Units", "Per unit", "Budget", "Invoiced", "Paid", "Variance", "Active"].map(h => (
-                    <th key={h} className="text-left px-4 py-2.5 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-subtle)" }}>{h}</th>
-                  ))}
-                  <th className="px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {catItems.map((item, idx) => {
-                  const budget   = item.price_per_unit_eur * item.units
-                  const variance = budget - item.actual_paid_eur
-                  const vendor   = vendors.find(v => v.vendor_id === item.vendor_id)
-                  return (
-                    <tr key={item.id} onClick={() => openEdit(item)} className="cursor-pointer transition-opacity"
-                      style={{ borderBottom: idx < catItems.length - 1 ? "1px solid var(--color-sage-light)" : "none", opacity: item.active ? 1 : 0.4 }}>
-                      <td className="px-4 py-3" style={{ color: "var(--color-charcoal)" }}>{item.description}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{vendor?.vendor_name ?? "–"}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{item.units}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{fmt(item.price_per_unit_eur)}</td>
-                      <td className="px-4 py-3 font-medium" style={{ color: "var(--color-charcoal)" }}>{fmt(budget)}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{fmt(item.actual_invoiced_eur)}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--color-sage)" }}>{fmt(item.actual_paid_eur)}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: variance >= 0 ? "var(--color-charcoal)" : "var(--color-warm-red)" }}>{fmt(variance)}</td>
-                      <td className="px-4 py-3">
-                        <button onClick={e => { e.stopPropagation(); toggleActive(item) }}
-                          className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ backgroundColor: item.active ? "var(--color-sage)" : "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
-                          {item.active ? "Yes" : "No"}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3"><X size={13} style={{ color: "var(--color-sage-light)" }} /></td>
+      {Object.entries(grouped).map(([category, catItems]) => {
+        const isCollapsed = collapsed.has(category)
+        const catTotal = catItems.filter(i => i.active).reduce((s, i) => s + i.price_per_unit_eur * i.units, 0)
+        return (
+          <div key={category} className="mb-6">
+            {/* Category header row */}
+            <div className="flex items-center justify-between px-1 mb-2">
+              <button
+                onClick={() => toggleCollapse(category)}
+                className="flex items-center gap-2 text-lg font-medium"
+                style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}
+              >
+                {isCollapsed
+                  ? <ChevronRight size={18} style={{ color: "var(--color-subtle)" }} />
+                  : <ChevronDown size={18} style={{ color: "var(--color-subtle)" }} />
+                }
+                {category}
+              </button>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium" style={{ color: "var(--color-charcoal)" }}>{fmt(catTotal)}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); openAdd(category) }}
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium"
+                  style={{ backgroundColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}
+                >
+                  <Plus size={12} /> Add line
+                </button>
+              </div>
+            </div>
+
+            {!isCollapsed && (
+              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--color-blush)" }}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--color-sage-light)" }}>
+                      {["Description", "Vendor", "Units", "Per unit", "Budget", "Invoiced", "Paid", "Variance", "Active"].map(h => (
+                        <th key={h} className="text-left px-4 py-2.5 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-subtle)" }}>{h}</th>
+                      ))}
+                      <th className="px-4 py-2.5" />
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {catItems.map((item, idx) => {
+                      const budget   = item.price_per_unit_eur * item.units
+                      const variance = budget - item.actual_paid_eur
+                      const vendor   = vendors.find(v => v.vendor_id === item.vendor_id)
+                      return (
+                        <tr key={item.id} onClick={() => openEdit(item)} className="cursor-pointer transition-opacity"
+                          style={{ borderBottom: idx < catItems.length - 1 ? "1px solid var(--color-sage-light)" : "none", opacity: item.active ? 1 : 0.4 }}>
+                          <td className="px-4 py-3" style={{ color: "var(--color-charcoal)" }}>{item.description}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{vendor?.vendor_name ?? "–"}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{item.units}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{fmt(item.price_per_unit_eur)}</td>
+                          <td className="px-4 py-3 font-medium" style={{ color: "var(--color-charcoal)" }}>{fmt(budget)}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{fmt(item.actual_invoiced_eur)}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--color-sage)" }}>{fmt(item.actual_paid_eur)}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: variance >= 0 ? "var(--color-charcoal)" : "var(--color-warm-red)" }}>{fmt(variance)}</td>
+                          <td className="px-4 py-3">
+                            <button onClick={e => { e.stopPropagation(); toggleActive(item) }}
+                              className="text-xs px-2 py-0.5 rounded-full"
+                              style={{ backgroundColor: item.active ? "var(--color-sage)" : "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
+                              {item.active ? "Yes" : "No"}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3"><X size={13} style={{ color: "var(--color-sage-light)" }} /></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Add Category Modal */}
+      {categoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(74,87,89,0.4)" }}>
+          <div className="rounded-2xl p-6 w-full max-w-sm shadow-xl" style={{ backgroundColor: "white" }}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-2xl font-medium" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
+                New Category
+              </h2>
+              <button onClick={() => setCategoryModal(false)}><X size={20} style={{ color: "var(--color-subtle)" }} /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>Category name</label>
+              <input
+                ref={categoryInputRef}
+                type="text"
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") confirmNewCategory() }}
+                className="w-full px-3 py-2 rounded-lg text-sm border"
+                style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}
+                placeholder="e.g. Flowers"
+              />
+            </div>
+            <div className="flex justify-end gap-3 mt-5">
+              <button onClick={() => setCategoryModal(false)} className="px-5 py-2.5 rounded-xl text-sm" style={{ color: "var(--color-subtle)" }}>Cancel</button>
+              <button onClick={confirmNewCategory} disabled={!newCategoryName.trim()} className="px-5 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
+                Create
+              </button>
+            </div>
           </div>
         </div>
-      ))}
+      )}
 
-      {/* Modal */}
+      {/* Add / Edit Line Item Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(74,87,89,0.4)" }}>
           <div className="rounded-2xl p-6 w-full max-w-xl shadow-xl overflow-y-auto max-h-[90vh]" style={{ backgroundColor: "white" }}>
@@ -184,7 +285,47 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
               <button onClick={() => setShowModal(false)}><X size={20} style={{ color: "var(--color-subtle)" }} /></button>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <BField label="Category" value={formData.category ?? ""} onChange={v => setFormData(p => ({ ...p, category: v }))} />
+              {/* Category field: dropdown when editing, read-only when locked, text input otherwise */}
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>Category</label>
+                {categoryLocked ? (
+                  <input
+                    type="text"
+                    value={formData.category ?? ""}
+                    readOnly
+                    className="w-full px-3 py-2 rounded-lg text-sm border"
+                    style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)", backgroundColor: "var(--color-stone, #f5f4f1)" }}
+                  />
+                ) : editItem ? (
+                  <select
+                    value={formData.category ?? ""}
+                    onChange={e => {
+                      const val = e.target.value
+                      if (val === "__other__") {
+                        const custom = window.prompt("Enter new category name:")
+                        if (custom?.trim()) setFormData(p => ({ ...p, category: custom.trim() }))
+                      } else {
+                        setFormData(p => ({ ...p, category: val }))
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-lg text-sm border appearance-none"
+                    style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}
+                  >
+                    {existingCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="__other__">Other…</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.category ?? ""}
+                    onChange={e => setFormData(p => ({ ...p, category: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-sm border"
+                    style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}
+                  />
+                )}
+              </div>
               <div className="col-span-2"><BField label="Description" value={formData.description ?? ""} onChange={v => setFormData(p => ({ ...p, description: v }))} /></div>
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>Vendor</label>
