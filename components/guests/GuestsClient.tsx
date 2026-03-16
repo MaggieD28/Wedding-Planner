@@ -1,0 +1,367 @@
+"use client"
+
+import { useState, useMemo, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { Plus, Search, X, Download, ChevronDown, ChevronUp } from "lucide-react"
+import type { Guest } from "@/types/database"
+
+const RSVP_COLORS: Record<string, string> = {
+  Accepted: "var(--color-sage)",
+  Declined: "var(--color-warm-red)",
+  Pending:  "var(--color-sage-light)",
+  Invited:  "var(--color-pink)",
+}
+
+const ALL_RSVP     = ["Accepted", "Declined", "Pending", "Invited"]
+const ALL_SIDES    = ["Bride", "Groom"]
+const ALL_DIETARY  = ["Vegetarian", "Vegan", "Pescatarian", "Gluten Free", "Other (see Allergies)"]
+
+const EMPTY_GUEST: Partial<Guest> = {
+  first_name: "", last_name: "", side: "Bride", rsvp_status: "Pending",
+  save_the_date_sent: false, invite_sent: false, children_count: 0,
+}
+
+interface Props {
+  initialGuests: Guest[]
+}
+
+export default function GuestsClient({ initialGuests }: Props) {
+  const supabase = createClient()
+  const [guests, setGuests] = useState<Guest[]>(initialGuests)
+  const [search, setSearch]           = useState("")
+  const [filterRsvp, setFilterRsvp]   = useState("all")
+  const [filterSide, setFilterSide]   = useState("all")
+  const [activeTab, setActiveTab]     = useState("all")
+  const [showModal, setShowModal]     = useState(false)
+  const [editGuest, setEditGuest]     = useState<Guest | null>(null)
+  const [formData, setFormData]       = useState<Partial<Guest>>(EMPTY_GUEST)
+  const [sortField, setSortField]     = useState<keyof Guest>("guest_id")
+  const [sortAsc, setSortAsc]         = useState(true)
+  const [saving, setSaving]           = useState(false)
+
+  // Realtime
+  useEffect(() => {
+    const channel = supabase
+      .channel("guests-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "guests" }, payload => {
+        if (payload.eventType === "INSERT") setGuests(p => [...p, payload.new as Guest])
+        else if (payload.eventType === "UPDATE") setGuests(p => p.map(g => g.id === (payload.new as Guest).id ? payload.new as Guest : g))
+        else if (payload.eventType === "DELETE") setGuests(p => p.filter(g => g.id !== (payload.old as Guest).id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [supabase])
+
+  const filtered = useMemo(() => {
+    let list = [...guests]
+    if (activeTab === "bride") list = list.filter(g => g.side === "Bride")
+    else if (activeTab === "groom") list = list.filter(g => g.side === "Groom")
+    else if (activeTab === "dietary") list = list.filter(g => g.dietary_requirement || g.allergies_notes || g.children_dietary)
+    if (filterRsvp !== "all") list = list.filter(g => g.rsvp_status === filterRsvp)
+    if (filterSide !== "all") list = list.filter(g => g.side === filterSide)
+    if (search) {
+      const q = search.toLowerCase()
+      list = list.filter(g =>
+        g.first_name.toLowerCase().includes(q) ||
+        (g.last_name ?? "").toLowerCase().includes(q) ||
+        (g.email ?? "").toLowerCase().includes(q)
+      )
+    }
+    list.sort((a, b) => {
+      const av = String(a[sortField] ?? "")
+      const bv = String(b[sortField] ?? "")
+      return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
+    })
+    return list
+  }, [guests, activeTab, filterRsvp, filterSide, search, sortField, sortAsc])
+
+  function openAdd() {
+    setEditGuest(null)
+    setFormData(EMPTY_GUEST)
+    setShowModal(true)
+  }
+  function openEdit(g: Guest) {
+    setEditGuest(g)
+    setFormData({ ...g })
+    setShowModal(true)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    if (editGuest) {
+      const { data } = await supabase.from("guests").update(formData).eq("id", editGuest.id).select().single()
+      if (data) setGuests(p => p.map(g => g.id === editGuest.id ? data as Guest : g))
+    } else {
+      const maxId = guests.reduce((max, g) => {
+        const n = parseInt(g.guest_id.replace("G", ""), 10)
+        return isNaN(n) ? max : Math.max(max, n)
+      }, 0)
+      const guest_id = `G${String(maxId + 1).padStart(3, "0")}`
+      const { data } = await supabase.from("guests").insert({ ...formData, guest_id }).select().single()
+      if (data) setGuests(p => [...p, data as Guest])
+    }
+    setSaving(false)
+    setShowModal(false)
+  }
+
+  async function handleDelete(g: Guest) {
+    if (!confirm(`Remove ${g.first_name} ${g.last_name ?? ""}?`)) return
+    await supabase.from("guests").delete().eq("id", g.id)
+    setGuests(p => p.filter(x => x.id !== g.id))
+  }
+
+  function exportCsv() {
+    const header = "Guest ID,First Name,Last Name,Side,Email,RSVP Status,Dietary,Allergies,Children,Children Dietary,Children Allergies,Save The Date,Invite Sent\n"
+    const rows = filtered.map(g =>
+      [g.guest_id, g.first_name, g.last_name ?? "", g.side, g.email ?? "",
+       g.rsvp_status, g.dietary_requirement ?? "", g.allergies_notes ?? "",
+       g.children_count, g.children_dietary ?? "", g.children_allergies ?? "",
+       g.save_the_date_sent ? "Yes" : "No", g.invite_sent ? "Yes" : "No"]
+       .map(v => `"${v}"`).join(",")
+    ).join("\n")
+    const blob = new Blob([header + rows], { type: "text/csv" })
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "guests.csv"; a.click()
+  }
+
+  function setSort(field: keyof Guest) {
+    if (sortField === field) setSortAsc(a => !a)
+    else { setSortField(field); setSortAsc(true) }
+  }
+
+  const summary = {
+    total: guests.length,
+    accepted: guests.filter(g => g.rsvp_status === "Accepted").length,
+    declined: guests.filter(g => g.rsvp_status === "Declined").length,
+    pending:  guests.filter(g => g.rsvp_status === "Pending" || g.rsvp_status === "Invited").length,
+  }
+
+  const tabs = [
+    { key: "all",     label: `All (${guests.length})` },
+    { key: "bride",   label: `Bride's side (${guests.filter(g => g.side === "Bride").length})` },
+    { key: "groom",   label: `Groom's side (${guests.filter(g => g.side === "Groom").length})` },
+    { key: "dietary", label: "Dietary needs" },
+  ]
+
+  return (
+    <div className="p-8">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-5xl font-light mb-1" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
+            Guests
+          </h1>
+          <div className="flex gap-4 text-sm mt-1">
+            <span style={{ color: "var(--color-charcoal)" }}>{summary.total} total</span>
+            <span style={{ color: "var(--color-sage)" }}>✓ {summary.accepted} accepted</span>
+            <span style={{ color: "var(--color-warm-red)" }}>✗ {summary.declined} declined</span>
+            <span style={{ color: "var(--color-subtle)" }}>… {summary.pending} pending</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={exportCsv} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm border" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-subtle)" }}>
+            <Download size={14} /> Export CSV
+          </button>
+          <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium" style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
+            <Plus size={15} /> Add guest
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-5 p-1 rounded-xl w-fit" style={{ backgroundColor: "rgba(74,87,89,0.08)" }}>
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
+            style={{ backgroundColor: activeTab === tab.key ? "var(--color-pink)" : "transparent", color: activeTab === tab.key ? "var(--color-charcoal)" : "var(--color-subtle)" }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-subtle)" }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search guests…"
+            className="pl-8 pr-3 py-2 rounded-lg text-sm border" style={{ backgroundColor: "var(--color-blush)", borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)", width: "200px" }} />
+        </div>
+        <GuestSelect label="RSVP" value={filterRsvp} onChange={setFilterRsvp} options={ALL_RSVP} />
+        {(filterRsvp !== "all" || search) && (
+          <button onClick={() => { setFilterRsvp("all"); setSearch("") }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs" style={{ color: "var(--color-warm-red)", backgroundColor: "rgba(192,115,106,0.1)" }}>
+            <X size={12} /> Clear
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--color-blush)" }}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: "2px solid var(--color-sage-light)" }}>
+                {[
+                  { key: "first_name", label: "Name" },
+                  { key: "side", label: "Side" },
+                  { key: "rsvp_status", label: "RSVP" },
+                  { key: "save_the_date_sent", label: "STD" },
+                  { key: "invite_sent", label: "Invite" },
+                  { key: "dietary_requirement", label: "Dietary" },
+                  { key: "children_count", label: "Children" },
+                  { key: "email", label: "Email" },
+                ].map(col => (
+                  <th key={col.key} onClick={() => setSort(col.key as keyof Guest)}
+                    className="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider cursor-pointer select-none"
+                    style={{ color: "var(--color-subtle)" }}>
+                    <span className="flex items-center gap-1">
+                      {col.label}
+                      {sortField === col.key ? (sortAsc ? <ChevronUp size={11} /> : <ChevronDown size={11} />) : null}
+                    </span>
+                  </th>
+                ))}
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((g, idx) => (
+                <tr key={g.id}
+                  className="cursor-pointer transition-colors"
+                  style={{ borderBottom: idx < filtered.length - 1 ? "1px solid var(--color-sage-light)" : "none" }}
+                  onClick={() => openEdit(g)}
+                >
+                  <td className="px-4 py-3 font-medium" style={{ color: "var(--color-charcoal)" }}>
+                    {g.first_name} {g.last_name ?? ""}
+                    {g.head_guest_id && <span className="text-xs ml-1" style={{ color: "var(--color-subtle)" }}>↳</span>}
+                  </td>
+                  <td className="px-4 py-3" style={{ color: "var(--color-subtle)" }}>{g.side}</td>
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: RSVP_COLORS[g.rsvp_status] ?? "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
+                      {g.rsvp_status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: g.save_the_date_sent ? "var(--color-sage)" : "var(--color-sage-light)" }}>
+                    {g.save_the_date_sent ? "✓" : "–"}
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: g.invite_sent ? "var(--color-sage)" : "var(--color-sage-light)" }}>
+                    {g.invite_sent ? "✓" : "–"}
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{g.dietary_requirement || "–"}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>
+                    {g.children_count > 0 ? g.children_count : "–"}
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{g.email || "–"}</td>
+                  <td className="px-4 py-3" onClick={e => { e.stopPropagation(); handleDelete(g) }}>
+                    <X size={13} style={{ color: "var(--color-sage-light)" }} className="hover:text-warm-red" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && (
+            <p className="px-4 py-8 text-sm text-center" style={{ color: "var(--color-subtle)" }}>No guests match.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(74,87,89,0.4)" }}>
+          <div className="rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl" style={{ backgroundColor: "white" }}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-2xl font-medium" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
+                {editGuest ? "Edit Guest" : "Add Guest"}
+              </h2>
+              <button onClick={() => setShowModal(false)}><X size={20} style={{ color: "var(--color-subtle)" }} /></button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <GField label="First name *" value={formData.first_name ?? ""} onChange={v => setFormData(p => ({ ...p, first_name: v }))} />
+              <GField label="Last name" value={formData.last_name ?? ""} onChange={v => setFormData(p => ({ ...p, last_name: v || null }))} />
+              <GField label="Email" value={formData.email ?? ""} onChange={v => setFormData(p => ({ ...p, email: v || null }))} />
+              <GField label="Phone" value={formData.phone ?? ""} onChange={v => setFormData(p => ({ ...p, phone: v || null }))} />
+              <GSelect label="Side" value={formData.side ?? "Bride"} onChange={v => setFormData(p => ({ ...p, side: v as "Bride"|"Groom" }))} options={ALL_SIDES} />
+              <GSelect label="RSVP status" value={formData.rsvp_status ?? "Pending"} onChange={v => setFormData(p => ({ ...p, rsvp_status: v as Guest["rsvp_status"] }))} options={ALL_RSVP} />
+              <GField label="RSVP date" value={formData.rsvp_date ?? ""} onChange={v => setFormData(p => ({ ...p, rsvp_date: v || null }))} type="date" />
+              <GSelect label="Dietary requirement" value={formData.dietary_requirement ?? ""} onChange={v => setFormData(p => ({ ...p, dietary_requirement: v || null }))} options={["", ...ALL_DIETARY]} />
+              <div className="col-span-2">
+                <GField label="Allergies / notes" value={formData.allergies_notes ?? ""} onChange={v => setFormData(p => ({ ...p, allergies_notes: v || null }))} />
+              </div>
+
+              {/* Checkboxes */}
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--color-charcoal)" }}>
+                <input type="checkbox" checked={formData.save_the_date_sent ?? false} onChange={e => setFormData(p => ({ ...p, save_the_date_sent: e.target.checked }))} className="rounded" />
+                Save the date sent
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--color-charcoal)" }}>
+                <input type="checkbox" checked={formData.invite_sent ?? false} onChange={e => setFormData(p => ({ ...p, invite_sent: e.target.checked }))} className="rounded" />
+                Invite sent
+              </label>
+
+              {/* Children section */}
+              <div className="col-span-2 pt-2 border-t" style={{ borderColor: "var(--color-sage-light)" }}>
+                <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: "var(--color-subtle)" }}>Children</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <GField label="Children attending" value={String(formData.children_count ?? 0)} onChange={v => setFormData(p => ({ ...p, children_count: parseInt(v) || 0 }))} type="number" />
+                  <GField label="Children dietary" value={formData.children_dietary ?? ""} onChange={v => setFormData(p => ({ ...p, children_dietary: v || null }))} />
+                  <GField label="Children allergies" value={formData.children_allergies ?? ""} onChange={v => setFormData(p => ({ ...p, children_allergies: v || null }))} />
+                </div>
+              </div>
+
+              <div className="col-span-2">
+                <GField label="Follow-up notes" value={formData.follow_up_notes ?? ""} onChange={v => setFormData(p => ({ ...p, follow_up_notes: v || null }))} />
+              </div>
+              <div className="col-span-2">
+                <GField label="Head guest ID (for couples/families)" value={formData.head_guest_id ?? ""} onChange={v => setFormData(p => ({ ...p, head_guest_id: v || null }))} placeholder="e.g. G001" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl text-sm" style={{ color: "var(--color-subtle)" }}>Cancel</button>
+              <button onClick={handleSave} disabled={saving} className="px-5 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60" style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
+                {saving ? "Saving…" : editGuest ? "Save changes" : "Add guest"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GField({ label, value, onChange, type = "text", placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }} />
+    </div>
+  )
+}
+
+function GSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[]
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg text-sm border appearance-none" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
+        {options.map(o => <option key={o} value={o}>{o || "None"}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function GuestSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[]
+}) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      className="px-3 py-2 rounded-lg text-sm border appearance-none"
+      style={{ backgroundColor: "var(--color-blush)", borderColor: "var(--color-sage-light)", color: value === "all" ? "var(--color-subtle)" : "var(--color-charcoal)" }}>
+      <option value="all">All {label}</option>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  )
+}

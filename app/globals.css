@@ -1,26 +1,55 @@
 @import "tailwindcss";
 
+/* ─── Brand Colour Palette ─────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-pink: #EDAFB8;
+  --color-blush: #F7E1D7;
+  --color-stone: #DEDBD2;
+  --color-sage-light: #BFCABA;
+  --color-sage: #B0C4B1;
+  --color-charcoal: #4A5759;
+  --color-warm-red: #C0736A;
+  --color-subtle: #6B7E80;
 }
 
+/* ─── Tailwind v4 Theme Registration ───────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-pink: #EDAFB8;
+  --color-blush: #F7E1D7;
+  --color-stone: #DEDBD2;
+  --color-sage-light: #BFCABA;
+  --color-sage: #B0C4B1;
+  --color-charcoal: #4A5759;
+  --color-warm-red: #C0736A;
+  --color-subtle: #6B7E80;
+
+  --font-heading: var(--font-cormorant);
+  --font-sans: var(--font-inter);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ─── Base Styles ───────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-stone);
+  color: var(--color-charcoal);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-cormorant), Georgia, serif;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-stone);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-sage-light);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-sage);
 }
