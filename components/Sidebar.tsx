@@ -11,7 +11,7 @@ import {
   BookOpen,
   FileText,
   Notebook,
-  ExternalLink,
+  LayoutGrid,
   Settings,
   LogOut,
 } from "lucide-react"
@@ -24,10 +24,11 @@ const navItems = [
   { href: "/dashboard/vendors", label: "Vendors", icon: BookOpen },
   { href: "/dashboard/invoices", label: "Invoices", icon: FileText },
   { href: "/dashboard/decisions", label: "Decisions Log", icon: Notebook },
+  { href: "/dashboard/seating", label: "Seating", icon: LayoutGrid },
 ]
 
 interface SidebarProps {
-  seatingPlanUrl?: string
+  seatingPlanUrl?: string // kept for backwards compatibility, no longer rendered
   userEmail?: string
 }
 
@@ -85,17 +86,6 @@ export default function Sidebar({ seatingPlanUrl, userEmail }: SidebarProps) {
           )
         })}
 
-        {/* Seating Plan — external link */}
-        <a
-          href={seatingPlanUrl || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
-          style={{ color: "rgba(255,255,255,0.75)" }}
-        >
-          <ExternalLink size={16} strokeWidth={1.75} />
-          Seating Plan
-        </a>
       </nav>
 
       {/* Bottom section */}

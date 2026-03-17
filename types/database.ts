@@ -40,6 +40,7 @@ export interface Guest {
   children_allergies: string | null
   follow_up_notes: string | null
   table_number: number | null
+  is_head_table: boolean
   created_at: string
   updated_at: string
 }
@@ -112,5 +113,43 @@ export interface AppSetting {
   key: string
   value: string
   label: string | null
+  updated_at: string
+}
+
+export interface SeatingTable {
+  id: string
+  name: string
+  capacity: number
+  x: number | null
+  y: number | null
+  shape: "CIRCLE" | "OVAL" | "RECTANGLE"
+  is_head_table: boolean
+  created_at: string
+  seats?: Seat[]
+}
+
+export interface Seat {
+  id: string
+  table_id: string
+  guest_id: string | null
+  guest?: Guest | null
+}
+
+export interface SeatingConstraint {
+  id: string
+  guest_a_id: string
+  guest_b_id: string
+  type: "AVOID" | "PREFER"
+  created_at: string
+  guest_a?: Guest
+  guest_b?: Guest
+}
+
+export interface RoomConfig {
+  id: string
+  room_shape: "RECTANGLE" | "SQUARE"
+  aspect_ratio: number
+  table_shape: "CIRCLE" | "OVAL" | "RECTANGLE"
+  seats_per_table: number
   updated_at: string
 }
