@@ -60,38 +60,61 @@ export function getRoomHeight(venueCapacity: number, aspectRatio: number): numbe
 
 /**
  * Generate grid positions (as 0–100 percentages in both axes) for `tableCount` tables.
- *
- * Positions are stored as 0–100% for both x and y axes. When rendering:
- *   x_svg = x_pct * aspectRatio   (viewBox width = aspectRatio * 100)
- *   y_svg = y_pct                  (viewBox height = 100)
+ * Uses room-config defaults for all tables (legacy — prefer generateAutoFitLayout).
  */
 export function generateLayout(config: RoomLayoutConfig, tableCount: number): Position[] {
-  if (tableCount <= 0) return []
-  if (tableCount === 1) return [{ x: 50, y: 50 }]
-
-  const ratio = config.aspectRatio
-  const venueCapacity = config.venueCapacity ?? 100
-
-  const roomHeight = getRoomHeight(venueCapacity, ratio)
-
-  const { rx: tableRx, ry: tableRy } = getTableSvgDims(
-    config.seatsPerTable,
-    config.tableShape,
-    roomHeight
+  return generateAutoFitLayout(
+    Array.from({ length: tableCount }, () => ({
+      capacity: config.seatsPerTable,
+      shape: config.tableShape,
+    })),
+    config.aspectRatio,
+    config.venueCapacity ?? 100,
+    config.tableShape
   )
-  const tableW = tableRx * 2
-  const tableH = tableRy * 2
+}
 
-  const svgW = ratio * 100
+/**
+ * Generate non-overlapping grid positions using each table's actual capacity and shape.
+ *
+ * Coordinate system: positions are 0–100% on both axes. When rendering in SVG:
+ *   x_svg = x_pct * aspectRatio
+ *   y_svg = y_pct
+ */
+export function generateAutoFitLayout(
+  tables: Array<{ capacity: number; shape: string | null }>,
+  aspectRatio: number,
+  venueCapacity: number,
+  defaultShape = "CIRCLE"
+): Position[] {
+  const n = tables.length
+  if (n === 0) return []
+  if (n === 1) return [{ x: 50, y: 50 }]
+
+  const roomHeight = getRoomHeight(Math.max(venueCapacity, 10), aspectRatio)
+  const svgW = aspectRatio * 100
   const svgH = 100
 
-  let bestRows = 1
-  let bestCols = tableCount
-  let bestScore = Infinity
+  // Compute per-table SVG half-dims
+  const dims = tables.map((t) =>
+    getTableSvgDims(t.capacity, t.shape ?? defaultShape, roomHeight)
+  )
 
-  for (let rows = 1; rows <= tableCount; rows++) {
-    const cols = Math.ceil(tableCount / rows)
-    const score = Math.abs(cols / rows - svgW / svgH)
+  // Cell size based on the largest table so no two cells ever overlap
+  const maxRx = Math.max(...dims.map((d) => d.rx))
+  const maxRy = Math.max(...dims.map((d) => d.ry))
+  const gap = Math.max(maxRx, maxRy) * 0.6 // minimum aisle between tables
+  const cellW = maxRx * 2 + gap
+  const cellH = maxRy * 2 + gap
+
+  // Find grid dimensions (rows × cols) whose aspect ratio best matches the room
+  let bestRows = 1
+  let bestCols = n
+  let bestScore = Infinity
+  for (let rows = 1; rows <= n; rows++) {
+    const cols = Math.ceil(n / rows)
+    const gridAspect = (cols * cellW) / (rows * cellH)
+    const score = Math.abs(gridAspect - aspectRatio)
     if (score < bestScore) {
       bestScore = score
       bestRows = rows
@@ -99,33 +122,67 @@ export function generateLayout(config: RoomLayoutConfig, tableCount: number): Po
     }
   }
 
-  const edgePadX = Math.max(5, tableW * 0.7)
-  const edgePadY = Math.max(5, tableH * 0.7)
+  // Center the grid within the SVG canvas
+  const totalW = bestCols * cellW
+  const totalH = bestRows * cellH
+  const originX = (svgW - totalW) / 2 + cellW / 2
+  const originY = (svgH - totalH) / 2 + cellH / 2
 
-  const usableW = svgW - 2 * edgePadX
-  const usableH = svgH - 2 * edgePadY
-
-  const minSpacingX = tableW * 1.2
-  const minSpacingY = tableH * 1.2
-
-  const spacingX =
-    bestCols === 1 ? 0 : Math.max(minSpacingX, usableW / (bestCols - 1))
-  const spacingY =
-    bestRows === 1 ? 0 : Math.max(minSpacingY, usableH / (bestRows - 1))
-
-  const positions: Position[] = []
-  for (let i = 0; i < tableCount; i++) {
+  return tables.map((_, i) => {
     const row = Math.floor(i / bestCols)
     const col = i % bestCols
-
-    const xSvg = bestCols === 1 ? svgW / 2 : edgePadX + col * spacingX
-    const ySvg = bestRows === 1 ? svgH / 2 : edgePadY + row * spacingY
-
-    positions.push({
-      x: Math.min(95, Math.max(5, xSvg / ratio)),
+    const xSvg = originX + col * cellW
+    const ySvg = originY + row * cellH
+    return {
+      x: Math.min(95, Math.max(5, xSvg / aspectRatio)),
       y: Math.min(95, Math.max(5, ySvg)),
-    })
+    }
+  })
+}
+
+/**
+ * Return the IDs of all tables that overlap with at least one other table.
+ * Uses axis-aligned bounding box (AABB) collision with a small tolerance gap.
+ */
+export function detectOverlaps(
+  tables: Array<{
+    id: string
+    x: number | null
+    y: number | null
+    capacity: number
+    shape: string | null
+  }>,
+  aspectRatio: number,
+  venueCapacity: number,
+  defaultShape = "CIRCLE"
+): Set<string> {
+  const roomHeight = getRoomHeight(Math.max(venueCapacity, 10), aspectRatio)
+  const tolerance = 1 // SVG units of acceptable overlap (rounding / drag imprecision)
+
+  const overlapping = new Set<string>()
+
+  for (let i = 0; i < tables.length; i++) {
+    for (let j = i + 1; j < tables.length; j++) {
+      const a = tables[i]
+      const b = tables[j]
+
+      const ax = (a.x ?? 50) * aspectRatio
+      const ay = a.y ?? 50
+      const bx = (b.x ?? 50) * aspectRatio
+      const by = b.y ?? 50
+
+      const ad = getTableSvgDims(a.capacity, a.shape ?? defaultShape, roomHeight)
+      const bd = getTableSvgDims(b.capacity, b.shape ?? defaultShape, roomHeight)
+
+      const overlapX = Math.abs(ax - bx) < ad.rx + bd.rx - tolerance
+      const overlapY = Math.abs(ay - by) < ad.ry + bd.ry - tolerance
+
+      if (overlapX && overlapY) {
+        overlapping.add(a.id)
+        overlapping.add(b.id)
+      }
+    }
   }
 
-  return positions
+  return overlapping
 }
