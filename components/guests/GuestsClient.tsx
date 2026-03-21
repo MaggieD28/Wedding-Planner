@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Plus, Search, X, Download, ChevronDown, ChevronUp } from "lucide-react"
+import { Plus, Search, X, Download, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 import type { Guest } from "@/types/database"
 
 const RSVP_COLORS: Record<string, string> = {
@@ -19,6 +19,19 @@ const ALL_DIETARY  = ["Vegetarian", "Vegan", "Pescatarian", "Gluten Free", "Othe
 const EMPTY_GUEST: Partial<Guest> = {
   first_name: "", last_name: "", side: "Bride", rsvp_status: "Pending",
   save_the_date_sent: false, invite_sent: false, children_count: 0,
+}
+
+interface UnmatchedRsvp {
+  name: string
+  email: string | null
+  attending: boolean
+  dietary_requirements: string | null
+  plus_one: boolean
+  plus_one_name: string | null
+  plus_one_dietary: string | null
+  guest_count: number
+  children: { name: string; dietary: string | null }[]
+  created_at: string
 }
 
 interface Props {
@@ -39,6 +52,36 @@ export default function GuestsClient({ initialGuests }: Props) {
   const [sortAsc, setSortAsc]         = useState(true)
   const [saving, setSaving]           = useState(false)
 
+  // Sync
+  type SyncStatus = "idle" | "syncing" | "done" | "error"
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle")
+  const [syncResult, setSyncResult] = useState<{ synced: number; added: number; unmatched: UnmatchedRsvp[] } | null>(null)
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Manual match
+  const [matchTarget, setMatchTarget] = useState<UnmatchedRsvp | null>(null)
+  const [matchGuestId, setMatchGuestId] = useState("")
+  const [matchSearch, setMatchSearch] = useState("")
+  const [matching, setMatching] = useState(false)
+
+  const runSync = async () => {
+    setSyncStatus("syncing")
+    setSyncResult(null)
+    if (dismissTimer.current) clearTimeout(dismissTimer.current)
+    try {
+      const res = await fetch("/api/sync-rsvps", { method: "POST" })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      setSyncResult(data)
+      setSyncStatus("done")
+      if (data.unmatched.length === 0) {
+        dismissTimer.current = setTimeout(() => setSyncStatus("idle"), 10_000)
+      }
+    } catch {
+      setSyncStatus("error")
+    }
+  }
+
   // Realtime
   useEffect(() => {
     const channel = supabase
@@ -51,6 +94,11 @@ export default function GuestsClient({ initialGuests }: Props) {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [supabase])
+
+  // Auto-sync on mount
+  useEffect(() => {
+    runSync()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     let list = [...guests]
@@ -110,6 +158,28 @@ export default function GuestsClient({ initialGuests }: Props) {
     setGuests(p => p.filter(x => x.id !== g.id))
   }
 
+  async function handleMatch() {
+    if (!matchTarget || !matchGuestId) return
+    setMatching(true)
+    const res = await fetch("/api/sync-rsvps/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guestId: matchGuestId, rsvp: matchTarget }),
+    })
+    if (res.ok) {
+      setSyncResult(prev => prev ? {
+        ...prev,
+        unmatched: prev.unmatched.filter(u => u !== matchTarget),
+        synced: prev.synced + 1,
+      } : prev)
+      // Guest update comes via realtime channel automatically
+    }
+    setMatching(false)
+    setMatchTarget(null)
+    setMatchGuestId("")
+    setMatchSearch("")
+  }
+
   function exportCsv() {
     const header = "Guest ID,First Name,Last Name,Side,Email,RSVP Status,Dietary,Allergies,Children,Children Dietary,Children Allergies,Save The Date,Invite Sent\n"
     const rows = filtered.map(g =>
@@ -141,6 +211,16 @@ export default function GuestsClient({ initialGuests }: Props) {
     { key: "groom",   label: `Groom's side (${guests.filter(g => g.side === "Groom").length})` },
     { key: "dietary", label: "Dietary needs" },
   ]
+
+  const matchFilteredGuests = useMemo(() => {
+    if (!matchSearch) return guests
+    const q = matchSearch.toLowerCase()
+    return guests.filter(g =>
+      g.first_name.toLowerCase().includes(q) ||
+      (g.last_name ?? "").toLowerCase().includes(q) ||
+      (g.email ?? "").toLowerCase().includes(q)
+    )
+  }, [guests, matchSearch])
 
   return (
     <div className="p-8">
@@ -193,6 +273,83 @@ export default function GuestsClient({ initialGuests }: Props) {
         )}
       </div>
 
+      {/* Sync banner */}
+      {syncStatus !== "idle" && (
+        <div className="mb-4 px-4 py-3 rounded-xl text-sm"
+          style={{
+            backgroundColor:
+              syncStatus === "error" ? "rgba(192,115,106,0.15)" :
+              syncStatus === "syncing" ? "rgba(74,87,89,0.08)" :
+              syncResult && syncResult.unmatched.length > 0 ? "rgba(255,193,7,0.15)" :
+              "rgba(100,140,100,0.12)",
+            color: "var(--color-charcoal)",
+          }}>
+          <div className="flex items-center justify-between gap-4">
+            <span>
+              {syncStatus === "syncing" && (
+                <span className="flex items-center gap-2">
+                  <RefreshCw size={13} className="animate-spin" style={{ color: "var(--color-subtle)" }} />
+                  Syncing RSVPs from website…
+                </span>
+              )}
+              {syncStatus === "done" && syncResult && syncResult.unmatched.length === 0 && (
+                <span style={{ color: "var(--color-sage)" }}>
+                  ✓ {syncResult.synced} RSVP{syncResult.synced !== 1 ? "s" : ""} synced
+                  {syncResult.added > 0 && ` · ${syncResult.added} guest${syncResult.added !== 1 ? "s" : ""} added`}
+                </span>
+              )}
+              {syncStatus === "done" && syncResult && syncResult.unmatched.length > 0 && (
+                <span>
+                  <span style={{ color: "var(--color-sage)" }}>
+                    ✓ {syncResult.synced} synced{syncResult.added > 0 ? ` · ${syncResult.added} added` : ""}
+                  </span>
+                  {" · "}
+                  <span style={{ color: "#b45309" }}>
+                    ⚠ {syncResult.unmatched.length} unmatched
+                  </span>
+                </span>
+              )}
+              {syncStatus === "error" && (
+                <span style={{ color: "var(--color-warm-red)" }}>
+                  ✗ Sync failed — check RSVP_API_KEY in .env.local
+                </span>
+              )}
+            </span>
+            {syncStatus !== "syncing" && (
+              <button onClick={runSync} className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs border"
+                style={{ borderColor: "var(--color-sage-light)", color: "var(--color-subtle)", whiteSpace: "nowrap" }}>
+                <RefreshCw size={11} /> Sync again
+              </button>
+            )}
+          </div>
+
+          {/* Unmatched cards */}
+          {syncStatus === "done" && syncResult && syncResult.unmatched.length > 0 && (
+            <div className="flex flex-col gap-2 mt-2">
+              {syncResult.unmatched.map((u, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs"
+                  style={{ backgroundColor: "rgba(180,83,9,0.08)" }}>
+                  <span>
+                    <strong>{u.name}</strong>
+                    {u.email && <span style={{ color: "var(--color-subtle)" }}> · {u.email}</span>}
+                    {" · "}
+                    <span style={{ color: u.attending ? "var(--color-sage)" : "var(--color-warm-red)" }}>
+                      {u.attending ? "Attending" : "Declined"}
+                    </span>
+                    {u.dietary_requirements && <span> · {u.dietary_requirements}</span>}
+                  </span>
+                  <button onClick={() => { setMatchTarget(u); setMatchGuestId(""); setMatchSearch("") }}
+                    className="ml-3 px-2 py-1 rounded text-xs border"
+                    style={{ borderColor: "#b45309", color: "#b45309" }}>
+                    Match
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--color-blush)" }}>
         <div className="overflow-x-auto">
@@ -231,6 +388,9 @@ export default function GuestsClient({ initialGuests }: Props) {
                   <td className="px-4 py-3 font-medium" style={{ color: "var(--color-charcoal)" }}>
                     {g.first_name} {g.last_name ?? ""}
                     {g.head_guest_id && <span className="text-xs ml-1" style={{ color: "var(--color-subtle)" }}>↳</span>}
+                    {g.rsvp_synced && (
+                      <span title="RSVP synced" className="ml-1.5 text-xs" style={{ color: "var(--color-sage)" }}>●</span>
+                    )}
                   </td>
                   <td className="px-4 py-3" style={{ color: "var(--color-subtle)" }}>{g.side}</td>
                   <td className="px-4 py-3">
@@ -242,7 +402,7 @@ export default function GuestsClient({ initialGuests }: Props) {
                     {g.save_the_date_sent ? "✓" : "–"}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: g.invite_sent ? "var(--color-sage)" : "var(--color-sage-light)" }}>
-                    {g.invite_sent ? "✓" : "–"}
+                    {g.invite_sent ? "Yes" : "–"}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{g.dietary_requirement || "–"}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>
@@ -262,7 +422,7 @@ export default function GuestsClient({ initialGuests }: Props) {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Edit/Add Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(74,87,89,0.4)" }}>
           <div className="rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl" style={{ backgroundColor: "white" }}>
@@ -318,6 +478,101 @@ export default function GuestsClient({ initialGuests }: Props) {
               <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl text-sm" style={{ color: "var(--color-subtle)" }}>Cancel</button>
               <button onClick={handleSave} disabled={saving} className="px-5 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60" style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
                 {saving ? "Saving…" : editGuest ? "Save changes" : "Add guest"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Match Modal */}
+      {matchTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(74,87,89,0.4)" }}>
+          <div className="rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden" style={{ backgroundColor: "white" }}>
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b" style={{ borderColor: "var(--color-sage-light)" }}>
+              <h2 className="text-2xl font-medium" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
+                Match RSVP to Guest
+              </h2>
+              <button onClick={() => { setMatchTarget(null); setMatchGuestId(""); setMatchSearch("") }}>
+                <X size={20} style={{ color: "var(--color-subtle)" }} />
+              </button>
+            </div>
+
+            <div className="flex divide-x" style={{ borderColor: "var(--color-sage-light)" }}>
+              {/* Left: RSVP details */}
+              <div className="flex-1 p-5 text-sm space-y-2" style={{ color: "var(--color-charcoal)" }}>
+                <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: "var(--color-subtle)" }}>RSVP from website</p>
+                <p><strong>{matchTarget.name}</strong></p>
+                {matchTarget.email && <p style={{ color: "var(--color-subtle)" }}>{matchTarget.email}</p>}
+                <p>
+                  <span style={{ color: matchTarget.attending ? "var(--color-sage)" : "var(--color-warm-red)" }}>
+                    {matchTarget.attending ? "Attending" : "Declined"}
+                  </span>
+                  {matchTarget.guest_count > 1 && ` · ${matchTarget.guest_count} guests`}
+                </p>
+                {matchTarget.dietary_requirements && (
+                  <p style={{ color: "var(--color-subtle)" }}>Dietary: {matchTarget.dietary_requirements}</p>
+                )}
+                {matchTarget.plus_one && matchTarget.plus_one_name && (
+                  <p style={{ color: "var(--color-subtle)" }}>
+                    +1: {matchTarget.plus_one_name}
+                    {matchTarget.plus_one_dietary && ` (${matchTarget.plus_one_dietary})`}
+                  </p>
+                )}
+                {matchTarget.children && matchTarget.children.length > 0 && (
+                  <p style={{ color: "var(--color-subtle)" }}>{matchTarget.children.length} child{matchTarget.children.length !== 1 ? "ren" : ""}</p>
+                )}
+              </div>
+
+              {/* Right: guest search */}
+              <div className="flex-1 p-5 flex flex-col gap-3">
+                <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-subtle)" }}>Select guest record</p>
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-subtle)" }} />
+                  <input
+                    value={matchSearch}
+                    onChange={e => setMatchSearch(e.target.value)}
+                    placeholder="Search by name or email…"
+                    className="w-full pl-8 pr-3 py-2 rounded-lg text-sm border"
+                    style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}
+                  />
+                </div>
+                <div className="overflow-y-auto max-h-48 flex flex-col gap-1">
+                  {matchFilteredGuests.map(g => (
+                    <button
+                      key={g.id}
+                      onClick={() => setMatchGuestId(g.id)}
+                      className="text-left px-3 py-2 rounded-lg text-sm transition-colors"
+                      style={{
+                        backgroundColor: matchGuestId === g.id ? "var(--color-sage-light)" : "transparent",
+                        color: "var(--color-charcoal)",
+                      }}
+                    >
+                      <span className="font-medium">{g.first_name} {g.last_name ?? ""}</span>
+                      {g.email && <span className="ml-2 text-xs" style={{ color: "var(--color-subtle)" }}>{g.email}</span>}
+                    </button>
+                  ))}
+                  {matchFilteredGuests.length === 0 && (
+                    <p className="text-xs py-2 text-center" style={{ color: "var(--color-subtle)" }}>No guests match.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t" style={{ borderColor: "var(--color-sage-light)" }}>
+              <button
+                onClick={() => { setMatchTarget(null); setMatchGuestId(""); setMatchSearch("") }}
+                className="px-5 py-2.5 rounded-xl text-sm"
+                style={{ color: "var(--color-subtle)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMatch}
+                disabled={!matchGuestId || matching}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40"
+                style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}
+              >
+                {matching ? "Applying…" : "Apply RSVP"}
               </button>
             </div>
           </div>
