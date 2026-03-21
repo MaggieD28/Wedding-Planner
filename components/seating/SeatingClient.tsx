@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -17,10 +17,12 @@ import TableCard, { type DisplayTable } from "./TableCard"
 import TableDiagram from "./TableDiagram"
 import RoomCanvas from "./RoomCanvas"
 import ConstraintManager, { type DisplayConstraint } from "./ConstraintManager"
+import GroupManager from "./GroupManager"
+import NameTablesModal from "./NameTablesModal"
 import { computeConflicts } from "@/lib/seatingConstraints"
-import { computeAutoAssign, type GuestForAssign, type TableForAssign, type ConstraintForAssign } from "@/lib/autoAssign"
-import { generateLayout } from "@/lib/roomLayout"
-import type { Guest, SeatingTable, Seat, SeatingConstraint, RoomConfig } from "@/types/database"
+import { computeAutoAssign, type GuestForAssign, type TableForAssign, type ConstraintForAssign, type GroupRuleForAssign } from "@/lib/autoAssign"
+import { generateAutoFitLayout, detectOverlaps } from "@/lib/roomLayout"
+import type { Guest, SeatingTable, Seat, SeatingConstraint, RoomConfig, Group, GroupRule } from "@/types/database"
 
 type GuestWithHeadTable = Guest & { is_head_table: boolean }
 
@@ -47,12 +49,23 @@ interface Props {
 
 type Tab = "seating" | "room" | "tables"
 
+const ROOM_PRESETS = [
+  { label: "Ballroom",     aspect_ratio: 1.5,  table_shape: "CIRCLE",    seats_per_table: 10, description: "Classic wedding ballroom · round tables" },
+  { label: "Marquee",      aspect_ratio: 2.0,  table_shape: "CIRCLE",    seats_per_table: 10, description: "Wide outdoor tent · round tables" },
+  { label: "Barn",         aspect_ratio: 1.78, table_shape: "RECTANGLE", seats_per_table: 12, description: "Rustic barn · long rectangle tables" },
+  { label: "Banquet Hall", aspect_ratio: 1.33, table_shape: "OVAL",      seats_per_table: 12, description: "Hotel/formal · oval banquet tables" },
+  { label: "Garden",       aspect_ratio: 1.0,  table_shape: "CIRCLE",    seats_per_table: 8,  description: "Square outdoor garden · intimate round tables" },
+  { label: "Portrait Hall",aspect_ratio: 0.67, table_shape: "RECTANGLE", seats_per_table: 10, description: "Tall narrow room · rectangle tables" },
+] as const
+
 function toSeatingGuest(g: GuestWithHeadTable, allGuests: GuestWithHeadTable[]): SeatingGuest {
   return {
     id: g.id,
     name: `${g.first_name}${g.last_name ? " " + g.last_name : ""}`,
     side: g.side.toUpperCase() as "BRIDE" | "GROOM",
     group: g.side,
+    group_id: g.group_id ?? null,
+    rsvp_status: g.rsvp_status,
     is_head_table: g.is_head_table ?? false,
     head_guest_id: g.head_guest_id,
     hasPlusOne: allGuests.some((other) => other.head_guest_id === g.id),
@@ -86,19 +99,59 @@ export default function SeatingClient({
 }: Props) {
   const supabase = createClient()
 
-  const [guests] = useState<GuestWithHeadTable[]>(initialGuests)
+  const [guests, setGuests] = useState<GuestWithHeadTable[]>(initialGuests)
   const [tables, setTables] = useState<TableWithSeats[]>(initialTables)
   const [constraints, setConstraints] = useState<ConstraintFull[]>(initialConstraints)
   const [roomConfig, setRoomConfig] = useState<RoomConfig | null>(initialRoomConfig)
+  const [groups, setGroups] = useState<Group[]>([])
+  const [groupRules, setGroupRules] = useState<GroupRule[]>([])
   const [tab, setTab] = useState<Tab>("seating")
   const [seatingView, setSeatingView] = useState<"cards" | "diagrams">("cards")
   const [filter, setFilter] = useState("")
   const [activeGuest, setActiveGuest] = useState<SeatingGuest | null>(null)
   const [showConstraints, setShowConstraints] = useState(false)
+  const [showNameModal, setShowNameModal] = useState(false)
   const [autoAssigning, setAutoAssigning] = useState(false)
   const [autoAssignResult, setAutoAssignResult] = useState<{ assigned: number; skipped: string[] } | null>(null)
+  const [undoToast, setUndoToast] = useState(false)
 
-  // New table form state
+  // Undo stack — up to 10 reversible operations
+  const undoStack = useRef<(() => Promise<void>)[]>([])
+
+  function pushUndo(fn: () => Promise<void>) {
+    undoStack.current = [fn, ...undoStack.current].slice(0, 10)
+  }
+
+  async function handleUndo() {
+    const fn = undoStack.current.shift()
+    if (!fn) return
+    await fn()
+    setUndoToast(true)
+    setTimeout(() => setUndoToast(false), 2000)
+  }
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault()
+        handleUndo()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  })
+
+  // Diagram container measurement
+  const diagramRef = useRef<HTMLDivElement>(null)
+  const [diagramWidth, setDiagramWidth] = useState(960)
+  useEffect(() => {
+    const el = diagramRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setDiagramWidth(entry.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const [editingTableId, setEditingTableId] = useState<string | null>(null)
   const [editingTableName, setEditingTableName] = useState("")
   const [newTableName, setNewTableName] = useState("")
@@ -112,11 +165,10 @@ export default function SeatingClient({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   )
 
-  // Refresh tables and constraints from Supabase
   const refreshTables = useCallback(async () => {
     const { data } = await supabase
       .from("seating_tables")
-      .select(`*, seats(*, guest:guests(id, first_name, last_name, side, head_guest_id, is_head_table))`)
+      .select(`*, seats(*, guest:guests(id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id))`)
       .order("name")
     if (data) setTables(data as TableWithSeats[])
   }, [supabase])
@@ -124,9 +176,29 @@ export default function SeatingClient({
   const refreshConstraints = useCallback(async () => {
     const { data } = await supabase
       .from("seating_constraints")
-      .select(`*, guest_a:guests!seating_constraints_guest_a_id_fkey(id, first_name, last_name, side, head_guest_id, is_head_table), guest_b:guests!seating_constraints_guest_b_id_fkey(id, first_name, last_name, side, head_guest_id, is_head_table)`)
+      .select(`*, guest_a:guests!seating_constraints_guest_a_id_fkey(id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id), guest_b:guests!seating_constraints_guest_b_id_fkey(id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id)`)
     if (data) setConstraints(data as ConstraintFull[])
   }, [supabase])
+
+  const refreshGuests = useCallback(async () => {
+    const { data } = await supabase
+      .from("guests")
+      .select("id, guest_id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id, rsvp_synced, save_the_date_sent, invite_sent, invite_date, rsvp_date, dietary_requirement, allergies_notes, children_count, children_dietary, children_allergies, follow_up_notes, table_number, email, phone, created_at, updated_at")
+      .order("last_name")
+    if (data) setGuests(data as GuestWithHeadTable[])
+  }, [supabase])
+
+  const refreshGroups = useCallback(async () => {
+    const { data: g } = await supabase.from("groups").select("*").order("name")
+    if (g) setGroups(g as Group[])
+    const { data: r } = await supabase.from("group_rules").select("*")
+    if (r) setGroupRules(r as GroupRule[])
+  }, [supabase])
+
+  // Initial load of groups
+  useEffect(() => {
+    refreshGroups()
+  }, [refreshGroups])
 
   // Real-time subscriptions
   useEffect(() => {
@@ -134,30 +206,43 @@ export default function SeatingClient({
       .channel("seating-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "seats" }, refreshTables)
       .on("postgres_changes", { event: "*", schema: "public", table: "seating_tables" }, refreshTables)
+      .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, refreshGroups)
+      .on("postgres_changes", { event: "*", schema: "public", table: "guests" }, () => {
+        refreshGuests()
+        refreshTables()
+      })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [supabase, refreshTables])
+  }, [supabase, refreshTables, refreshGroups, refreshGuests])
 
   // Derived state
   const displayTables = buildDisplayTables(tables, guests)
-
   const seatingGuests = guests.map((g) => toSeatingGuest(g, guests))
 
-  // Identify the couple from the guest list
+  // guestGroupMap for conflict detection
+  const guestGroupMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const g of guests) {
+      if (g.group_id) m.set(g.id, g.group_id)
+    }
+    return m
+  }, [guests])
+
+  // Identify the couple
   const brideGuest = seatingGuests.find((g) => g.name.toLowerCase().startsWith("maggie") && g.side === "BRIDE")
   const groomGuest = seatingGuests.find((g) => g.name.toLowerCase().startsWith("bobby") && g.side === "GROOM")
   const coupleIds = new Set([brideGuest?.id, groomGuest?.id].filter(Boolean) as string[])
 
-  // A guest is assigned if any seat has their guest_id
   const assignedGuestIds = new Set(
     tables.flatMap((t) => t.seats.map((s) => s.guest_id).filter(Boolean))
   )
-  // Exclude couple from the regular unassigned list — they appear in the couple section
   const unassignedGuests = seatingGuests.filter((g) => !assignedGuestIds.has(g.id) && !coupleIds.has(g.id))
 
-  const { avoidViolations, preferWarnings } = computeConflicts(
+  const { avoidViolations, preferWarnings, groupViolations, groupWarnings } = computeConflicts(
     tables.map((t) => ({
       id: t.id,
+      x: t.x,
+      y: t.y,
       seats: t.seats.map((s) => ({ id: s.id, guest_id: s.guest_id })),
     })),
     constraints.map((c) => ({
@@ -165,7 +250,15 @@ export default function SeatingClient({
       guest_a_id: c.guest_a_id,
       guest_b_id: c.guest_b_id,
       type: c.type,
-    }))
+    })),
+    groupRules.map((r) => ({
+      id: r.id,
+      type: r.type,
+      group_id: r.group_id,
+      target_group_id: r.target_group_id,
+      target_table_id: r.target_table_id,
+    })),
+    guestGroupMap
   )
 
   const displayConstraints: DisplayConstraint[] = constraints.map((c) => ({
@@ -194,22 +287,41 @@ export default function SeatingClient({
     const guestId = active.id as string
     const targetSeatId = over.id as string
 
-    // Check if guest is already in this seat
     const currentSeatId = tables
       .flatMap((t) => t.seats)
       .find((s) => s.guest_id === guestId)?.id
+
+    const prevOccupant = tables
+      .flatMap((t) => t.seats)
+      .find((s) => s.id === targetSeatId)?.guest_id ?? null
+
     if (currentSeatId === targetSeatId) return
 
-    // Clear guest from their current seat (if any)
+    pushUndo(async () => {
+      if (currentSeatId) {
+        await supabase.from("seats").update({ guest_id: guestId }).eq("id", currentSeatId)
+      } else {
+        await supabase.from("seats").update({ guest_id: null }).eq("id", targetSeatId)
+      }
+      if (prevOccupant) {
+        await supabase.from("seats").update({ guest_id: prevOccupant }).eq("id", targetSeatId)
+      }
+      await refreshTables()
+    })
+
     if (currentSeatId) {
       await supabase.from("seats").update({ guest_id: null }).eq("id", currentSeatId)
     }
-    // Assign guest to target seat (displaces any existing occupant)
     await supabase.from("seats").update({ guest_id: guestId }).eq("id", targetSeatId)
     await refreshTables()
   }
 
   const handleUnassignGuest = async (seatId: string) => {
+    const guestId = tables.flatMap((t) => t.seats).find((s) => s.id === seatId)?.guest_id
+    pushUndo(async () => {
+      if (guestId) await supabase.from("seats").update({ guest_id: guestId }).eq("id", seatId)
+      await refreshTables()
+    })
     await supabase.from("seats").update({ guest_id: null }).eq("id", seatId)
     await refreshTables()
   }
@@ -217,8 +329,54 @@ export default function SeatingClient({
   const handleClearTable = async (tableId: string) => {
     const seatIds = tables.find((t) => t.id === tableId)?.seats.map((s) => s.id) ?? []
     if (seatIds.length === 0) return
+
+    const prevAssignments = tables
+      .find((t) => t.id === tableId)
+      ?.seats.filter((s) => s.guest_id)
+      .map((s) => ({ seatId: s.id, guestId: s.guest_id! })) ?? []
+
+    pushUndo(async () => {
+      for (const { seatId, guestId } of prevAssignments) {
+        await supabase.from("seats").update({ guest_id: guestId }).eq("id", seatId)
+      }
+      await refreshTables()
+    })
+
     await supabase.from("seats").update({ guest_id: null }).in("id", seatIds)
     await refreshTables()
+  }
+
+  const handleMoveGuest = async (guestId: string, fromSeatId: string, toSeatId: string) => {
+    pushUndo(async () => {
+      await supabase.from("seats").update({ guest_id: guestId }).eq("id", fromSeatId)
+      await supabase.from("seats").update({ guest_id: null }).eq("id", toSeatId)
+      await refreshTables()
+    })
+    await supabase.from("seats").update({ guest_id: null }).eq("id", fromSeatId)
+    await supabase.from("seats").update({ guest_id: guestId }).eq("id", toSeatId)
+    await refreshTables()
+  }
+
+  const handleRsvpChange = async (guestId: string, status: string) => {
+    await supabase.from("guests").update({ rsvp_status: status }).eq("id", guestId)
+    if (status === "Declined") {
+      const seat = tables.flatMap((t) => t.seats).find((s) => s.guest_id === guestId)
+      if (seat) await supabase.from("seats").update({ guest_id: null }).eq("id", seat.id)
+    }
+    await refreshGuests()
+    await refreshTables()
+  }
+
+  const handleSyncRsvps = async () => {
+    const res = await fetch("/api/sync-rsvps", { method: "POST" })
+    if (res.ok) {
+      await refreshGuests()
+      for (const g of guests.filter((x) => x.rsvp_status === "Declined")) {
+        const seat = tables.flatMap((t) => t.seats).find((s) => s.guest_id === g.id)
+        if (seat) await supabase.from("seats").update({ guest_id: null }).eq("id", seat.id)
+      }
+      await refreshTables()
+    }
   }
 
   const handleAutoFillTable = async (tableId: string) => {
@@ -228,7 +386,6 @@ export default function SeatingClient({
       return
     }
     if (!confirm(`Fill ${tableName} with unassigned guests?`)) return
-
     setAutoAssignResult(null)
     const result = await runAutoAssign(tableId)
     setAutoAssignResult(result)
@@ -240,7 +397,6 @@ export default function SeatingClient({
       return
     }
     if (!confirm(`Auto-assign ${unassignedGuests.length} unassigned guests to available seats?`)) return
-
     setAutoAssigning(true)
     setAutoAssignResult(null)
     const result = await runAutoAssign()
@@ -249,18 +405,25 @@ export default function SeatingClient({
   }
 
   const runAutoAssign = async (tableId?: string) => {
-    const unassignedForAssign: GuestForAssign[] = unassignedGuests.map((g) => ({
-      id: g.id,
-      name: g.name,
-      side: g.side,
-      is_head_table: g.is_head_table,
-      head_guest_id: g.head_guest_id,
-      hasPlusOne: g.hasPlusOne,
-    }))
+    const unassignedForAssign: GuestForAssign[] = unassignedGuests.map((g) => {
+      const raw = guests.find((r) => r.id === g.id)
+      return {
+        id: g.id,
+        name: g.name,
+        side: g.side,
+        last_name: raw?.last_name ?? null,
+        group_id: g.group_id ?? null,
+        is_head_table: g.is_head_table,
+        head_guest_id: g.head_guest_id,
+        hasPlusOne: g.hasPlusOne,
+      }
+    })
 
     const tablesForAssign: TableForAssign[] = tables.map((t) => ({
       id: t.id,
       is_head_table: t.is_head_table,
+      x: t.x,
+      y: t.y,
       seats: t.seats.map((s) => ({
         id: s.id,
         guest_id: s.guest_id,
@@ -274,14 +437,21 @@ export default function SeatingClient({
       type: c.type,
     }))
 
+    const groupRulesForAssign: GroupRuleForAssign[] = groupRules.map((r) => ({
+      type: r.type,
+      group_id: r.group_id,
+      target_group_id: r.target_group_id,
+      target_table_id: r.target_table_id,
+    }))
+
     const { assignments, skipped } = computeAutoAssign(
       unassignedForAssign,
       tablesForAssign,
       constraintsForAssign,
-      tableId
+      tableId,
+      groupRulesForAssign
     )
 
-    // Apply assignments in batch
     for (const { seatId, guestId } of assignments) {
       await supabase.from("seats").update({ guest_id: guestId }).eq("id", seatId)
     }
@@ -291,11 +461,7 @@ export default function SeatingClient({
   }
 
   // --- Constraint handlers ---
-  const handleAddConstraint = async (
-    guestAId: string,
-    guestBId: string,
-    type: "AVOID" | "PREFER"
-  ) => {
+  const handleAddConstraint = async (guestAId: string, guestBId: string, type: "AVOID" | "PREFER") => {
     const { error } = await supabase
       .from("seating_constraints")
       .insert({ guest_a_id: guestAId, guest_b_id: guestBId, type })
@@ -308,6 +474,29 @@ export default function SeatingClient({
     await refreshConstraints()
   }
 
+  // --- Group handlers ---
+  const handleCreateGroup = async (name: string, colour: string) => {
+    await supabase.from("groups").insert({ name, colour })
+    await refreshGroups()
+  }
+
+  const handleRenameGroup = async (id: string, name: string) => {
+    await supabase.from("groups").update({ name }).eq("id", id)
+    await refreshGroups()
+  }
+
+  const handleDeleteGroup = async (id: string) => {
+    await supabase.from("groups").delete().eq("id", id)
+    await refreshGroups()
+    await refreshGuests()
+  }
+
+  const handleAssignGroup = async (guestId: string, groupId: string | null) => {
+    await supabase.from("guests").update({ group_id: groupId }).eq("id", guestId)
+    await refreshGuests()
+    await refreshTables()
+  }
+
   // --- Room canvas ---
   const handleTableMove = async (id: string, x: number, y: number) => {
     await supabase.from("seating_tables").update({ x, y }).eq("id", id)
@@ -316,15 +505,12 @@ export default function SeatingClient({
 
   const handleAutoLayout = async () => {
     if (tables.length === 0) return
-    const config = {
-      roomShape: "RECTANGLE",
-      aspectRatio: roomConfig?.aspect_ratio ?? 1.5,
-      tableShape: roomConfig?.table_shape ?? "CIRCLE",
-      seatsPerTable: roomConfig?.seats_per_table ?? 10,
-      guestCount: guests.length,
-      venueCapacity: tables.reduce((s, t) => s + t.capacity, 0),
-    }
-    const positions = generateLayout(config, tables.length)
+    const positions = generateAutoFitLayout(
+      tables.map((t) => ({ capacity: t.capacity, shape: t.shape })),
+      roomConfig?.aspect_ratio ?? 1.5,
+      Math.max(venueCapacity, 10),
+      roomConfig?.table_shape ?? "CIRCLE"
+    )
     for (let i = 0; i < tables.length; i++) {
       const pos = positions[i]
       if (pos) {
@@ -348,7 +534,6 @@ export default function SeatingClient({
         .single()
       if (data) setRoomConfig(data as RoomConfig)
     }
-    // Sync table form defaults when room config changes
     if (patch.seats_per_table !== undefined) setNewTableCapacity(patch.seats_per_table)
     if (patch.table_shape !== undefined) setNewTableShape(patch.table_shape)
   }
@@ -390,10 +575,10 @@ export default function SeatingClient({
     await refreshTables()
   }
 
-  const handleRenameTable = async (tableId: string) => {
-    const name = editingTableName.trim()
-    if (name) {
-      await supabase.from("seating_tables").update({ name }).eq("id", tableId)
+  const handleRenameTable = async (tableId: string, name?: string) => {
+    const n = (name ?? editingTableName).trim()
+    if (n) {
+      await supabase.from("seating_tables").update({ name: n }).eq("id", tableId)
       await refreshTables()
     }
     setEditingTableId(null)
@@ -406,7 +591,52 @@ export default function SeatingClient({
     await refreshTables()
   }
 
+  const handleApplyTableNames = async (updates: { id: string; name: string }[]) => {
+    for (const { id, name } of updates) {
+      await supabase.from("seating_tables").update({ name }).eq("id", id)
+    }
+    await refreshTables()
+  }
+
   const venueCapacity = tables.reduce((s, t) => s + t.capacity, 0)
+
+  const diagramPositions = useMemo(() => {
+    const n = displayTables.length
+    if (n === 0) return {} as Record<string, { x: number; y: number }>
+    const ratio = roomConfig?.aspect_ratio ?? 1.5
+    const containerH = diagramWidth / ratio
+    const sizes = displayTables.map((t) => Math.max(200, 200 + (t.seats.length - 6) * 8) + 48)
+    const maxSize = Math.max(...sizes)
+    const gap = 24
+    const cellPx = maxSize + gap
+    let bestR = 1, bestC = n, bestScore = Infinity
+    for (let r = 1; r <= n; r++) {
+      const c = Math.ceil(n / r)
+      const score = Math.abs((c * cellPx) / (r * cellPx) - ratio)
+      if (score < bestScore) { bestScore = score; bestR = r; bestC = c }
+    }
+    const totalW = bestC * cellPx
+    const totalH = bestR * cellPx
+    const startX = Math.max(cellPx / 2, (diagramWidth - totalW) / 2 + cellPx / 2)
+    const startY = Math.max(cellPx / 2, (containerH - totalH) / 2 + cellPx / 2)
+    const result: Record<string, { x: number; y: number }> = {}
+    displayTables.forEach((t, i) => {
+      const row = Math.floor(i / bestC)
+      const col = i % bestC
+      result[t.id] = {
+        x: Math.min(95, Math.max(5, ((startX + col * cellPx) / diagramWidth) * 100)),
+        y: Math.min(95, Math.max(5, ((startY + row * cellPx) / containerH) * 100)),
+      }
+    })
+    return result
+  }, [displayTables, diagramWidth, roomConfig?.aspect_ratio])
+
+  const overlappingTableIds = detectOverlaps(
+    tables.map((t) => ({ id: t.id, x: t.x, y: t.y, capacity: t.capacity, shape: t.shape })),
+    roomConfig?.aspect_ratio ?? 1.5,
+    Math.max(venueCapacity, 10),
+    roomConfig?.table_shape ?? "CIRCLE"
+  )
 
   return (
     <div className="p-6">
@@ -436,7 +666,6 @@ export default function SeatingClient({
           </div>
         </div>
 
-        {/* Toolbar */}
         <div className="flex gap-2">
           <button
             onClick={handleAutoAssign}
@@ -509,7 +738,6 @@ export default function SeatingClient({
       {/* Seating tab */}
       {tab === "seating" && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          {/* View toggle */}
           <div className="flex justify-end mb-3">
             <div
               className="flex rounded-lg border overflow-hidden text-xs"
@@ -532,9 +760,9 @@ export default function SeatingClient({
           </div>
 
           <div className="flex gap-4 items-start">
-            {/* Unassigned guests sidebar */}
+            {/* Sidebar */}
             <div
-              className="w-64 flex-shrink-0 rounded-xl shadow-sm border p-4 sticky top-6 self-start"
+              className="w-64 flex-shrink-0 rounded-xl shadow-sm border p-4 sticky top-6 self-start max-h-[90vh] overflow-y-auto"
               style={{ background: "var(--color-blush)", borderColor: "var(--color-stone)" }}
             >
               {/* Couple cards */}
@@ -564,16 +792,27 @@ export default function SeatingClient({
                 )}
               </div>
 
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-sm" style={{ color: "var(--color-charcoal)" }}>Unassigned</h2>
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full"
-                  style={{ background: "white", color: "var(--color-subtle)" }}
-                >
-                  {unassignedGuests.length}
-                </span>
-              </div>
-              <GuestList guests={unassignedGuests} filter={filter} onFilterChange={setFilter} />
+              {/* Guest list with RSVP sections */}
+              <GuestList
+                guests={unassignedGuests}
+                allGuests={seatingGuests}
+                filter={filter}
+                onFilterChange={setFilter}
+                groups={groups}
+                onRsvpChange={handleRsvpChange}
+                onSyncRsvps={handleSyncRsvps}
+                onAssignGroup={handleAssignGroup}
+              />
+
+              {/* Group Manager */}
+              <GroupManager
+                groups={groups}
+                guests={seatingGuests}
+                onCreateGroup={handleCreateGroup}
+                onRenameGroup={handleRenameGroup}
+                onDeleteGroup={handleDeleteGroup}
+                onAssignGroup={handleAssignGroup}
+              />
             </div>
 
             {/* Table grid */}
@@ -594,34 +833,43 @@ export default function SeatingClient({
                       table={table}
                       avoidViolations={avoidViolations}
                       preferWarnings={preferWarnings}
+                      groupViolations={groupViolations}
+                      groupWarnings={groupWarnings}
+                      otherTables={displayTables.filter((t) => t.id !== table.id)}
                       onUnassignGuest={handleUnassignGuest}
                       onClearTable={handleClearTable}
                       onAutoFillTable={handleAutoFillTable}
+                      onRenameTable={handleRenameTable}
+                      onMoveGuest={handleMoveGuest}
                     />
                   ))}
                 </div>
               ) : (
                 <div
-                  className="relative w-full rounded-xl border overflow-hidden"
+                  ref={diagramRef}
+                  className="relative w-full rounded-xl border overflow-auto"
                   style={{
                     aspectRatio: roomConfig?.aspect_ratio ?? 1.5,
                     background: "#FAF6F0",
                     borderColor: "var(--color-stone)",
                   }}
                 >
-                  {displayTables.map((table) => (
-                    <TableDiagram
-                      key={table.id}
-                      table={table}
-                      effectiveShape={(table.shape ?? roomConfig?.table_shape ?? "CIRCLE") as "CIRCLE" | "OVAL" | "RECTANGLE"}
-                      x={table.x ?? 50}
-                      y={table.y ?? 50}
-                      avoidViolations={avoidViolations}
-                      preferWarnings={preferWarnings}
-                      onUnassignGuest={handleUnassignGuest}
-                      onClearTable={handleClearTable}
-                    />
-                  ))}
+                  {displayTables.map((table) => {
+                    const pos = diagramPositions[table.id] ?? { x: 50, y: 50 }
+                    return (
+                      <TableDiagram
+                        key={table.id}
+                        table={table}
+                        effectiveShape={(table.shape ?? roomConfig?.table_shape ?? "CIRCLE") as "CIRCLE" | "OVAL" | "RECTANGLE"}
+                        x={pos.x}
+                        y={pos.y}
+                        avoidViolations={avoidViolations}
+                        preferWarnings={preferWarnings}
+                        onUnassignGuest={handleUnassignGuest}
+                        onClearTable={handleClearTable}
+                      />
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -636,12 +884,33 @@ export default function SeatingClient({
       {/* Room tab */}
       {tab === "room" && (
         <div>
-          {/* Room config settings bar */}
           <div
             className="flex flex-wrap items-center gap-4 mb-4 p-3 rounded-xl border text-sm"
             style={{ borderColor: "var(--color-stone)", background: "var(--color-blush)" }}
           >
-            {/* Orientation toggle */}
+            <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
+              <span className="text-xs font-medium">Venue preset</span>
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  const preset = ROOM_PRESETS.find((p) => p.label === e.target.value)
+                  if (preset) handleRoomConfigChange({
+                    aspect_ratio: preset.aspect_ratio,
+                    table_shape: preset.table_shape as RoomConfig["table_shape"],
+                    seats_per_table: preset.seats_per_table,
+                  })
+                  e.target.value = ""
+                }}
+                className="border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2"
+                style={{ borderColor: "var(--color-stone)" }}
+              >
+                <option value="" disabled>Choose…</option>
+                {ROOM_PRESETS.map((p) => (
+                  <option key={p.label} value={p.label} title={p.description}>{p.label}</option>
+                ))}
+              </select>
+            </label>
+
             {(() => {
               const ratio = roomConfig?.aspect_ratio ?? 1.5
               const isLandscape = ratio >= 1
@@ -695,6 +964,7 @@ export default function SeatingClient({
                 </>
               )
             })()}
+
             <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
               <span className="text-xs font-medium">Default shape</span>
               <select
@@ -720,13 +990,24 @@ export default function SeatingClient({
                 style={{ borderColor: "var(--color-stone)" }}
               />
             </label>
-            <button
-              onClick={handleAutoLayout}
-              className="ml-auto border rounded-lg px-4 py-1.5 text-xs transition-colors hover:bg-stone-100"
-              style={{ borderColor: "var(--color-stone)", color: "var(--color-subtle)" }}
-            >
-              Auto Layout
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {overlappingTableIds.size > 0 && (
+                <span className="text-xs font-medium px-2 py-1 rounded-lg bg-amber-50 border border-amber-300 text-amber-700">
+                  ⚠ {overlappingTableIds.size} tables overlapping
+                </span>
+              )}
+              <button
+                onClick={handleAutoLayout}
+                className="border rounded-lg px-4 py-1.5 text-xs font-medium transition-colors hover:bg-stone-100"
+                style={{
+                  borderColor: overlappingTableIds.size > 0 ? "#f59e0b" : "var(--color-stone)",
+                  color: overlappingTableIds.size > 0 ? "#b45309" : "var(--color-subtle)",
+                  background: overlappingTableIds.size > 0 ? "#fffbeb" : undefined,
+                }}
+              >
+                Auto Fit
+              </button>
+            </div>
           </div>
           {tables.length === 0 ? (
             <p className="text-sm text-center py-12" style={{ color: "var(--color-subtle)" }}>
@@ -752,7 +1033,9 @@ export default function SeatingClient({
                   shape: t.shape,
                   seats: t.seats.map((s) => ({ id: s.id, guest_id: s.guest_id })),
                 }))}
+                overlappingIds={overlappingTableIds}
                 onTableMove={handleTableMove}
+                onTableRename={(id, name) => handleRenameTable(id, name)}
               />
             </div>
           )}
@@ -762,7 +1045,17 @@ export default function SeatingClient({
       {/* Tables management tab */}
       {tab === "tables" && (
         <div className="max-w-2xl">
-          {/* Add table form */}
+          <div className="flex justify-end mb-3">
+            <button
+              onClick={() => setShowNameModal(true)}
+              disabled={tables.length === 0}
+              className="border rounded-lg px-4 py-2 text-sm transition-colors hover:bg-stone-50 disabled:opacity-40"
+              style={{ borderColor: "var(--color-stone)", color: "var(--color-charcoal)" }}
+            >
+              ✦ Name by theme…
+            </button>
+          </div>
+
           <form
             onSubmit={handleAddTable}
             className="flex gap-3 mb-6 p-4 rounded-xl border"
@@ -827,7 +1120,6 @@ export default function SeatingClient({
             </button>
           </form>
 
-          {/* Table list */}
           <div className="space-y-2">
             {tables.length === 0 && (
               <p className="text-sm text-center py-8" style={{ color: "var(--color-subtle)" }}>
@@ -905,6 +1197,25 @@ export default function SeatingClient({
           onDelete={handleDeleteConstraint}
           onClose={() => setShowConstraints(false)}
         />
+      )}
+
+      {/* Name tables modal */}
+      {showNameModal && (
+        <NameTablesModal
+          tables={displayTables}
+          onApply={handleApplyTableNames}
+          onClose={() => setShowNameModal(false)}
+        />
+      )}
+
+      {/* Undo toast */}
+      {undoToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-white text-sm shadow-lg z-50 pointer-events-none"
+          style={{ background: "var(--color-charcoal)" }}
+        >
+          Undone
+        </div>
       )}
     </div>
   )

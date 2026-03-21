@@ -8,8 +8,7 @@ export default async function SeatingPage() {
     await Promise.all([
       supabase
         .from("guests")
-        .select("id, guest_id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status")
-        .neq("rsvp_status", "Declined")
+        .select("id, guest_id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id")
         .order("first_name"),
       supabase
         .from("seating_tables")
@@ -18,7 +17,7 @@ export default async function SeatingPage() {
           seats (
             *,
             guest:guests (
-              id, first_name, last_name, side, head_guest_id, is_head_table
+              id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id
             )
           )
         `)
@@ -28,10 +27,10 @@ export default async function SeatingPage() {
         .select(`
           *,
           guest_a:guests!seating_constraints_guest_a_id_fkey (
-            id, first_name, last_name, side, head_guest_id, is_head_table
+            id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id
           ),
           guest_b:guests!seating_constraints_guest_b_id_fkey (
-            id, first_name, last_name, side, head_guest_id, is_head_table
+            id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id
           )
         `),
       supabase.from("room_config").select("*").limit(1),

@@ -41,6 +41,8 @@ export interface Guest {
   follow_up_notes: string | null
   table_number: number | null
   is_head_table: boolean
+  rsvp_synced: boolean
+  group_id: string | null
   created_at: string
   updated_at: string
 }
@@ -152,4 +154,20 @@ export interface RoomConfig {
   table_shape: "CIRCLE" | "OVAL" | "RECTANGLE"
   seats_per_table: number
   updated_at: string
+}
+
+export interface Group {
+  id: string
+  name: string
+  colour: string
+  created_at: string
+}
+
+export interface GroupRule {
+  id: string
+  type: "KEEP_TOGETHER" | "SEPARATE_FROM" | "NEAR_TABLE"
+  group_id: string
+  target_group_id: string | null
+  target_table_id: string | null
+  created_at: string
 }

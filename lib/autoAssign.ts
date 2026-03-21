@@ -2,6 +2,8 @@ export type GuestForAssign = {
   id: string
   name: string
   side: string // "Bride" | "Groom" — use .toUpperCase() for comparison
+  last_name?: string | null
+  group_id?: string | null
   is_head_table: boolean
   head_guest_id: string | null // non-null = this guest is a plus-one
   hasPlusOne: boolean          // true = this guest has a plus-one
@@ -16,6 +18,8 @@ export type SeatForAssign = {
 export type TableForAssign = {
   id: string
   is_head_table: boolean
+  x?: number | null
+  y?: number | null
   seats: SeatForAssign[]
 }
 
@@ -25,16 +29,32 @@ export type ConstraintForAssign = {
   type: string
 }
 
+export type GroupRuleForAssign = {
+  type: "KEEP_TOGETHER" | "SEPARATE_FROM" | "NEAR_TABLE"
+  group_id: string
+  target_group_id: string | null
+  target_table_id: string | null
+}
+
 type Cohort = {
   guests: GuestForAssign[]
   label: string
+  group_id?: string | null
+}
+
+function tableDistance(a: TableForAssign, b: TableForAssign): number {
+  if (a.x == null || a.y == null || b.x == null || b.y == null) return Infinity
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 }
 
 function scoreTable(
   table: TableForAssign,
   cohort: Cohort,
   constraints: ConstraintForAssign[],
-  closedTableIds: Set<string>
+  closedTableIds: Set<string>,
+  groupRules: GroupRuleForAssign[],
+  allTables: TableForAssign[],
+  tableGroupMap: Map<string, string>
 ): number {
   if (table.is_head_table) return -Infinity
   if (closedTableIds.has(table.id)) return -Infinity
@@ -82,37 +102,103 @@ function scoreTable(
     }
   }
 
+  // Group rules scoring
+  if (cohort.group_id) {
+    for (const rule of groupRules) {
+      if (rule.group_id !== cohort.group_id) continue
+
+      if (rule.type === "SEPARATE_FROM" && rule.target_group_id) {
+        const existingGroupOnTable = tableGroupMap.get(table.id)
+        if (existingGroupOnTable === rule.target_group_id) {
+          score -= 100000
+        }
+      }
+
+      if (rule.type === "NEAR_TABLE" && rule.target_table_id) {
+        const targetTable = allTables.find((t) => t.id === rule.target_table_id)
+        if (targetTable) {
+          const dist = tableDistance(table, targetTable)
+          if (dist < 20) score += 50
+        }
+      }
+    }
+  }
+
   return score
 }
 
 function buildGroupCohorts(
   guests: GuestForAssign[],
-  maxTableSize: number
+  maxTableSize: number,
+  groupRules: GroupRuleForAssign[]
 ): Cohort[] {
-  // Skip plus-one guests and guests who have a plus-one (handle manually)
-  const eligible = guests.filter((g) => !g.head_guest_id && !g.hasPlusOne)
+  // Step 1: Group by explicit group_id first
+  const groupMap = new Map<string, GuestForAssign[]>()
+  const ungrouped: GuestForAssign[] = []
 
-  // Group by side
-  const groups = new Map<string, GuestForAssign[]>()
-  for (const guest of eligible) {
-    const key = guest.side.toUpperCase()
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(guest)
-  }
-
-  const cohorts: Cohort[] = []
-  for (const [side, members] of groups) {
-    if (members.length > maxTableSize) {
-      for (let i = 0; i < members.length; i += maxTableSize) {
-        const chunk = members.slice(i, i + maxTableSize)
-        cohorts.push({ guests: chunk, label: side })
-      }
+  for (const guest of guests) {
+    if (guest.group_id) {
+      if (!groupMap.has(guest.group_id)) groupMap.set(guest.group_id, [])
+      groupMap.get(guest.group_id)!.push(guest)
     } else {
-      cohorts.push({ guests: members, label: side })
+      ungrouped.push(guest)
     }
   }
 
-  // Largest groups first
+  const cohorts: Cohort[] = []
+
+  // Named group cohorts
+  for (const [group_id, members] of groupMap) {
+    const rule = groupRules.find((r) => r.group_id === group_id && r.type === "KEEP_TOGETHER")
+    if (rule) {
+      // KEEP_TOGETHER: never split
+      cohorts.push({ guests: members, label: `group:${group_id}`, group_id })
+    } else {
+      for (let i = 0; i < members.length; i += maxTableSize) {
+        cohorts.push({ guests: members.slice(i, i + maxTableSize), label: `group:${group_id}`, group_id })
+      }
+    }
+  }
+
+  // Step 2: Family name heuristic for ungrouped guests
+  const familyMap = new Map<string, GuestForAssign[]>()
+  const noFamily: GuestForAssign[] = []
+
+  for (const guest of ungrouped) {
+    const ln = (guest.last_name ?? "").trim().toLowerCase()
+    if (ln) {
+      if (!familyMap.has(ln)) familyMap.set(ln, [])
+      familyMap.get(ln)!.push(guest)
+    } else {
+      noFamily.push(guest)
+    }
+  }
+
+  for (const [lastName, members] of familyMap) {
+    if (members.length === 1) {
+      noFamily.push(members[0])
+    } else {
+      // Soft-group by family
+      for (let i = 0; i < members.length; i += maxTableSize) {
+        cohorts.push({ guests: members.slice(i, i + maxTableSize), label: `family:${lastName}` })
+      }
+    }
+  }
+
+  // Step 3: Remaining ungrouped — side-based grouping
+  const sideGroups = new Map<string, GuestForAssign[]>()
+  for (const guest of noFamily) {
+    const key = guest.side.toUpperCase()
+    if (!sideGroups.has(key)) sideGroups.set(key, [])
+    sideGroups.get(key)!.push(guest)
+  }
+
+  for (const [side, members] of sideGroups) {
+    for (let i = 0; i < members.length; i += maxTableSize) {
+      cohorts.push({ guests: members.slice(i, i + maxTableSize), label: side })
+    }
+  }
+
   cohorts.sort((a, b) => b.guests.length - a.guests.length)
   return cohorts
 }
@@ -121,18 +207,36 @@ export function computeAutoAssign(
   unassigned: GuestForAssign[],
   allTables: TableForAssign[],
   constraints: ConstraintForAssign[],
-  tableId?: string
+  tableId?: string,
+  groupRules: GroupRuleForAssign[] = []
 ): { assignments: { seatId: string; guestId: string }[]; skipped: string[] } {
   const assignments: { seatId: string; guestId: string }[] = []
   const skipped: string[] = []
 
-  // Mutable copy of tables (track in-progress assignments)
+  // Mutable copy of tables
   const mutableTables: TableForAssign[] = allTables.map((t) => ({
     ...t,
     seats: t.seats.map((s) => ({ ...s })),
   }))
 
   const maxTableSize = Math.max(...allTables.map((t) => t.seats.length), 1)
+
+  // Build tableGroupMap: tableId -> dominant group_id for SEPARATE_FROM scoring
+  const tableGroupMap = new Map<string, string>()
+  for (const table of mutableTables) {
+    const groupCounts = new Map<string, number>()
+    for (const seat of table.seats) {
+      if (!seat.guest_id) continue
+      const guest = unassigned.find((g) => g.id === seat.guest_id)
+      if (guest?.group_id) {
+        groupCounts.set(guest.group_id, (groupCounts.get(guest.group_id) ?? 0) + 1)
+      }
+    }
+    if (groupCounts.size > 0) {
+      const dominant = [...groupCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+      tableGroupMap.set(table.id, dominant)
+    }
+  }
 
   function assignCohortToTable(cohort: Cohort, table: TableForAssign) {
     const emptySeats = table.seats.filter((s) => !s.guest_id)
@@ -145,6 +249,7 @@ export function computeAutoAssign(
       const seat = emptySeats[i]
       assignments.push({ seatId: seat.id, guestId: guest.id })
       seat.guest_id = guest.id
+      if (guest.group_id) tableGroupMap.set(table.id, guest.group_id)
     }
   }
 
@@ -154,10 +259,10 @@ export function computeAutoAssign(
     if (!targetTable) return { assignments, skipped }
 
     const candidates = unassigned.filter((g) => !g.is_head_table)
-    const cohorts = buildGroupCohorts(candidates, maxTableSize)
+    const cohorts = buildGroupCohorts(candidates, maxTableSize, groupRules)
 
     for (const cohort of cohorts) {
-      const score = scoreTable(targetTable, cohort, constraints, new Set())
+      const score = scoreTable(targetTable, cohort, constraints, new Set(), groupRules, mutableTables, tableGroupMap)
       if (score === -Infinity) continue
       assignCohortToTable(cohort, targetTable)
     }
@@ -185,17 +290,46 @@ export function computeAutoAssign(
     for (const g of headGuests) skipped.push(g.name)
   }
 
-  // Phase 2: Group-first for regular guests
+  // Phase 2: Handle plus-one pairs — force same cohort (MUST same table)
   const regularGuests = unassigned.filter((g) => !g.is_head_table)
-  const cohorts = buildGroupCohorts(regularGuests, maxTableSize)
+  const plusOnePairs = new Map<string, GuestForAssign>() // head_guest_id -> plus-one guest
+
+  for (const g of regularGuests) {
+    if (g.head_guest_id) {
+      plusOnePairs.set(g.head_guest_id, g)
+    }
+  }
+
+  const pairedIds = new Set<string>()
+  const pairedCohorts: Cohort[] = []
+
+  for (const [headId, plusOne] of plusOnePairs) {
+    const headGuest = regularGuests.find((g) => g.id === headId)
+    if (headGuest) {
+      pairedCohorts.push({
+        guests: [headGuest, plusOne],
+        label: headGuest.group_id ? `group:${headGuest.group_id}` : headGuest.side.toUpperCase(),
+        group_id: headGuest.group_id ?? plusOne.group_id,
+      })
+      pairedIds.add(headId)
+      pairedIds.add(plusOne.id)
+    }
+  }
+
+  // Remaining guests (not in a pair)
+  const unpaired = regularGuests.filter((g) => !pairedIds.has(g.id))
+  const groupCohorts = buildGroupCohorts(unpaired, maxTableSize, groupRules)
+  const allCohorts = [...pairedCohorts, ...groupCohorts]
+  allCohorts.sort((a, b) => b.guests.length - a.guests.length)
+
   const closedTableIds = new Set<string>()
 
-  for (const cohort of cohorts) {
+  for (const cohort of allCohorts) {
     let bestTable: TableForAssign | null = null
     let bestScore = -Infinity
 
     for (const table of mutableTables) {
-      const score = scoreTable(table, cohort, constraints, closedTableIds)
+      const score = scoreTable(table, cohort, constraints, closedTableIds, groupRules, mutableTables, tableGroupMap)
       if (score > bestScore) {
         bestScore = score
         bestTable = table
