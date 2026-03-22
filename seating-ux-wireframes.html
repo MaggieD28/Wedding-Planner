@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seating Plan — UX Wireframes v3</title>
+  <style>
+    :root {
+      --color-pink: #EDAFB8;
+      --color-blush: #F7E1D7;
+      --color-stone: #DEDBD2;
+      --color-sage-light: #BFCABA;
+      --color-sage: #B0C4B1;
+      --color-charcoal: #4A5759;
+      --color-warm-red: #C0736A;
+      --color-subtle: #6B7E80;
+      --color-bg: #F2EDE8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: #E8E4DF; color: var(--color-charcoal); min-height: 100vh; padding: 24px;
+    }
+
+    h1.page-title { font-family: Georgia, serif; font-size: 22px; font-weight: 600; color: var(--color-charcoal); margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: var(--color-subtle); margin-bottom: 24px; }
+
+    .scene-nav { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    .scene-btn {
+      padding: 8px 18px; border-radius: 999px; border: 1.5px solid var(--color-stone);
+      background: white; font-size: 12px; font-weight: 500; color: var(--color-subtle); cursor: pointer; transition: all 0.15s;
+    }
+    .scene-btn.active { background: var(--color-charcoal); border-color: var(--color-charcoal); color: white; }
+    .scene-btn:hover:not(.active) { border-color: var(--color-subtle); color: var(--color-charcoal); }
+
+    .scene-label {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-subtle); margin-bottom: 14px;
+    }
+    .scene-label .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-sage); display: inline-block; }
+
+    /* App frame */
+    .app-frame {
+      background: var(--color-bg); border-radius: 16px; overflow: hidden;
+      box-shadow: 0 4px 24px rgba(74,87,89,0.12), 0 1px 4px rgba(74,87,89,0.08);
+      width: 100%; max-width: 1100px; margin: 0 auto; position: relative;
+    }
+
+    /* Topbar */
+    .app-topbar {
+      display: flex; align-items: center; padding: 0 20px; height: 46px;
+      background: var(--color-charcoal); gap: 20px;
+    }
+    .app-topbar .logo { font-family: Georgia, serif; font-size: 14px; font-weight: 600; color: var(--color-blush); letter-spacing: 0.03em; white-space: nowrap; }
+    .app-topbar .nav-items { display: flex; gap: 4px; flex: 1; }
+    .app-topbar .nav-item { font-size: 11px; color: rgba(247,225,215,0.5); padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+    .app-topbar .nav-item.active { color: var(--color-blush); background: rgba(247,225,215,0.12); }
+
+    /* App body */
+    .app-body { display: flex; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 210px; min-width: 210px; background: var(--color-blush);
+      border-right: 1px solid var(--color-stone); display: flex; flex-direction: column;
+      transition: width 0.22s cubic-bezier(0.4,0,0.2,1), min-width 0.22s cubic-bezier(0.4,0,0.2,1); overflow: hidden;
+    }
+    .sidebar.collapsed { width: 36px; min-width: 36px; }
+    .sidebar-toggle {
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--color-subtle); font-size: 14px; flex-shrink: 0;
+      border-bottom: 1px solid var(--color-stone); transition: background 0.12s; user-select: none;
+    }
+    .sidebar-toggle:hover { background: rgba(0,0,0,0.04); }
+    .sidebar.collapsed .sidebar-toggle { border-bottom: none; height: 100%; align-items: flex-start; padding-top: 12px; }
+    .sidebar-inner { padding: 11px; flex: 1; overflow-y: auto; overflow-x: hidden; width: 210px; }
+    .sidebar.collapsed .sidebar-inner { opacity: 0; pointer-events: none; }
+
+    .sidebar-search { width: 100%; border: 1px solid var(--color-stone); border-radius: 7px; padding: 5px 9px; font-size: 11px; background: white; color: var(--color-charcoal); margin-bottom: 9px; outline: none; }
+    .sec-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-subtle); padding: 0 2px; }
+    .sec-header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; margin-bottom: 5px; cursor: pointer; }
+    .sec-count { font-size: 10px; background: white; color: var(--color-subtle); padding: 1px 5px; border-radius: 999px; }
+    .guest-row { display: flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 7px; background: white; border: 1px solid var(--color-stone); margin-bottom: 3px; font-size: 11px; cursor: grab; }
+    .g-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .g-name { flex: 1; font-weight: 500; }
+    .g-tag { font-size: 9px; padding: 1px 5px; border-radius: 999px; font-weight: 600; }
+    .tag-b { background: #fce7f3; color: #be185d; }
+    .tag-g { background: #d1fae5; color: #065f46; }
+    .tag-i { background: #f5f5f4; color: #78716c; }
+    .couple-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; border: 1.5px solid; font-size: 11px; font-weight: 500; margin-bottom: 4px; }
+
+    /* Main area */
+    .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    /* Header */
+    .seating-header {
+      padding: 11px 16px 9px; border-bottom: 1px solid var(--color-stone);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: var(--color-bg);
+    }
+    .seating-header h2 { font-family: Georgia, serif; font-size: 15px; font-weight: 600; color: var(--color-charcoal); }
+    .seating-header .meta { font-size: 10px; color: var(--color-subtle); margin-top: 1px; }
+    .header-actions { display: flex; gap: 6px; align-items: center; }
+    .btn { padding: 5px 11px; border-radius: 7px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.12s; border: 1.5px solid; }
+    .btn-ghost { border-color: var(--color-stone); background: white; color: var(--color-subtle); }
+    .btn-ghost:hover { background: #f5f2ef; }
+    .btn-sage { border-color: var(--color-sage); background: white; color: var(--color-charcoal); }
+    .btn-icon {
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      border-radius: 7px; border: 1.5px solid var(--color-stone); background: white;
+      color: var(--color-subtle); cursor: pointer; font-size: 12px; transition: all 0.12s;
+    }
+    .btn-icon:hover { background: #f5f2ef; }
+    .btn-icon.on { background: var(--color-charcoal); border-color: var(--color-charcoal); color: white; }
+
+    /* ─────────────────────────────────────────────────
+       ROOM CANVAS — the star of the show
+    ───────────────────────────────────────────────── */
+    .canvas-wrap {
+      border-bottom: 1px solid var(--color-stone); flex-shrink: 0;
+      overflow: hidden; transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+    .canvas-wrap.open  { height: 370px; }
+    .canvas-wrap.closed { height: 0; }
+
+    .room-svg-bg {
+      width: 100%; height: 100%; position: relative; overflow: hidden;
+      background: white;
+      background-image: radial-gradient(circle, #DEDBD2 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* Each table group is absolutely positioned and contains the circle + seats */
+    .tg {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      cursor: grab;
+    }
+    .tg:active { cursor: grabbing; }
+
+    /* Table circle */
+    .tc-bg {
+      border-radius: 50%;
+      background: var(--color-blush);
+      border: 2px solid var(--color-stone);
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column;
+      font-family: Georgia, serif;
+      font-weight: 600;
+      color: var(--color-charcoal);
+      position: relative;
+      z-index: 2;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .tc-bg .tc-name { font-size: 9px; line-height: 1.1; text-align: center; }
+    .tc-bg .tc-sub  { font-size: 7px; color: var(--color-subtle); font-family: ui-sans-serif, sans-serif; font-weight: 400; }
+    .tg:hover .tc-bg { border-color: var(--color-charcoal); }
+
+    /* Seats positioned radially */
+    .seat-pin {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+    }
+    .seat-circle {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--color-sage);
+      border: 1.5px solid white;
+      flex-shrink: 0;
+    }
+    .seat-circle.empty-seat {
+      background: var(--color-stone);
+    }
+    .seat-circle.bride-seat  { background: var(--color-pink); }
+    .seat-circle.groom-seat  { background: var(--color-sage); }
+    .seat-circle.conflict-seat { background: var(--color-warm-red); }
+
+    .seat-name-label {
+      font-size: 6.5px;
+      font-weight: 500;
+      color: var(--color-charcoal);
+      white-space: nowrap;
+      line-height: 1;
+      background: rgba(255,255,255,0.88);
+      padding: 0.5px 2px;
+      border-radius: 2px;
+    }
+    .seat-name-label.empty-label { color: var(--color-subtle); font-style: italic; font-weight: 400; }
+
+    /* Head table (rectangle) */
+    .ht-rect {
+      border-radius: 10px;
+      background: var(--color-blush);
+      border: 2px solid var(--color-pink);
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column;
+      font-family: Georgia, serif;
+      font-size: 9px; font-weight: 600;
+      color: var(--color-charcoal);
+      position: relative; z-index: 2;
+    }
+
+    /* Canvas legend + zoom hint */
+    .canvas-legend {
+      position: absolute; bottom: 8px; left: 10px;
+      display: flex; gap: 10px; align-items: center;
+      background: rgba(255,255,255,0.9); padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--color-stone); font-size: 9px; color: var(--color-subtle);
+    }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 2px; }
+    .canvas-hint {
+      position: absolute; top: 8px; right: 10px;
+      background: rgba(255,255,255,0.9); padding: 3px 8px; border-radius: 999px;
+      border: 1px solid var(--color-stone); font-size: 9px; color: var(--color-subtle);
+    }
+
+    /* Conflict ring around table */
+    .tc-bg.conflict { border-color: var(--color-warm-red); background: #fff5f5; }
+
+    /* Table cards */
+    .cards-area { flex: 1; overflow-y: auto; padding: 12px 14px; }
+    .cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .table-card { border-radius: 11px; border: 1px solid var(--color-stone); background: white; padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+    .tc-hdr { display: flex; align-items: center; justify-content: space-between; }
+    .tc-title { font-family: Georgia, serif; font-size: 12px; font-weight: 600; color: var(--color-charcoal); }
+    .tc-cap { font-size: 10px; color: var(--color-subtle); }
+    .tc-bar { height: 3px; border-radius: 99px; background: var(--color-stone); overflow: hidden; }
+    .tc-bar-fill { height: 100%; border-radius: 99px; background: var(--color-sage); }
+    .tc-seats { display: flex; flex-direction: column; gap: 2px; }
+    .s-row { display: flex; align-items: center; gap: 5px; padding: 3px 5px; border-radius: 5px; font-size: 10px; }
+    .s-row.filled { background: #faf9f8; border: 1px solid var(--color-stone); }
+    .s-row.empty  { border: 1px dashed #d4cfca; color: var(--color-subtle); }
+    .s-num { font-size: 8px; color: var(--color-subtle); width: 12px; text-align: right; flex-shrink: 0; }
+    .s-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .s-nm  { flex: 1; font-weight: 500; color: var(--color-charcoal); }
+    .s-side { font-size: 8px; color: var(--color-subtle); }
+    .s-mv  { font-size: 9px; color: var(--color-subtle); opacity: 0; cursor: pointer; }
+    .s-row.filled:hover .s-mv { opacity: 1; }
+    .tc-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; border-top: 1px solid var(--color-stone); }
+    .tc-acts { display: flex; gap: 3px; }
+    .tc-btn { font-size: 9px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--color-stone); background: white; color: var(--color-subtle); cursor: pointer; }
+
+    /* Stats bar */
+    .stats-bar { padding: 6px 16px; background: var(--color-bg); border-top: 1px solid var(--color-stone); display: flex; gap: 16px; font-size: 11px; color: var(--color-subtle); flex-shrink: 0; }
+    .stats-bar strong { color: var(--color-charcoal); }
+
+    /* Modal */
+    .modal-overlay { position: absolute; inset: 0; background: rgba(74,87,89,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(74,87,89,0.22); width: 460px; max-height: 82%; overflow-y: auto; padding: 20px; position: relative; transform: scale(0.97) translateY(8px); transition: transform 0.2s; }
+    .modal-overlay.open .modal { transform: scale(1) translateY(0); }
+    .modal-title { font-family: Georgia, serif; font-size: 16px; font-weight: 600; color: var(--color-charcoal); margin-bottom: 2px; }
+    .modal-sub { font-size: 11px; color: var(--color-subtle); margin-bottom: 16px; }
+    .modal-close { position: absolute; top: 14px; right: 14px; width: 24px; height: 24px; border-radius: 5px; border: 1px solid var(--color-stone); background: white; color: var(--color-subtle); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .msec { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-subtle); margin-bottom: 9px; padding-bottom: 5px; border-bottom: 1px solid var(--color-stone); }
+    .f-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 9px; }
+    .f-row label { font-size: 11px; font-weight: 500; color: var(--color-charcoal); }
+    .f-row select, .f-row input { border: 1px solid var(--color-stone); border-radius: 6px; padding: 6px 8px; font-size: 11px; color: var(--color-charcoal); background: white; outline: none; }
+    .f-inline { display: flex; gap: 8px; }
+    .f-inline .f-row { flex: 1; }
+    .shape-sel { display: flex; gap: 6px; }
+    .shape-opt { flex: 1; padding: 7px 4px; border: 1.5px solid var(--color-stone); border-radius: 8px; cursor: pointer; text-align: center; font-size: 10px; color: var(--color-subtle); transition: all 0.12s; }
+    .shape-opt.on { border-color: var(--color-charcoal); background: var(--color-blush); color: var(--color-charcoal); font-weight: 600; }
+    .shape-icon { font-size: 16px; display: block; margin-bottom: 2px; }
+    .tli { display: flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid var(--color-stone); border-radius: 8px; margin-bottom: 4px; background: #faf9f8; font-size: 11px; }
+    .tli-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--color-blush); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 600; font-family: Georgia, serif; flex-shrink: 0; }
+    .tli-name { flex: 1; font-weight: 500; }
+    .tli-cap { font-size: 10px; color: var(--color-subtle); }
+    .tli-btns { display: flex; gap: 3px; }
+    .tli-btn { width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--color-stone); background: white; color: var(--color-subtle); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 9px; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-stone); }
+    .btn-primary { padding: 7px 16px; border-radius: 7px; background: var(--color-charcoal); color: white; font-size: 11px; font-weight: 500; border: none; cursor: pointer; }
+
+    /* Collision toast */
+    .ctoast { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--color-charcoal); color: var(--color-blush); font-size: 11px; padding: 6px 13px; border-radius: 999px; white-space: nowrap; box-shadow: 0 4px 16px rgba(74,87,89,0.2); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+    .ctoast.show { opacity: 1; }
+
+    /* Annotation */
+    .ann { background: white; border: 1px solid var(--color-stone); border-radius: 12px; padding: 12px 16px; margin-top: 14px; max-width: 1100px; margin-left: auto; margin-right: auto; }
+    .ann h3 { font-size: 13px; font-weight: 600; color: var(--color-charcoal); margin-bottom: 4px; }
+    .ann p  { font-size: 12px; color: var(--color-subtle); line-height: 1.6; }
+    .pill  { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 600; margin-right: 4px; }
+    .p-new { background: #d1fae5; color: #065f46; }
+    .p-rm  { background: #fee2e2; color: #991b1b; }
+    .p-ok  { background: #dbeafe; color: #1e40af; }
+  </style>
+</head>
+<body>
+
+<h1 class="page-title">Seating Plan — UX Redesign</h1>
+<p class="subtitle">Interactive wireframes · app colours · click each scene to explore</p>
+
+<div class="scene-nav">
+  <button class="scene-btn active" onclick="show('s1')">① Canvas with guest names</button>
+  <button class="scene-btn"        onclick="show('s2')">② Canvas + cards together</button>
+  <button class="scene-btn"        onclick="show('s3')">③ Table cards view</button>
+  <button class="scene-btn"        onclick="show('s4')">④ Sidebar collapsed</button>
+  <button class="scene-btn"        onclick="show('s5')">⑤ Room Setup modal</button>
+  <button class="scene-btn"        onclick="show('s6')">⑥ Collision prevention</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCENE 1 — Canvas with guest names around tables (HERO)
+═══════════════════════════════════════════════════════════ -->
+<div id="s1">
+  <div class="scene-label"><span class="dot"></span> Scene 1 — Room canvas: guest names around each table (⊞ panel open)</div>
+  <div class="app-frame">
+    <div class="app-topbar">
+      <span class="logo">M &amp; B</span>
+      <div class="nav-items">
+        <span class="nav-item">Guests</span><span class="nav-item">Budget</span>
+        <span class="nav-item active">Seating</span><span class="nav-item">Vendors</span><span class="nav-item">Tasks</span>
+      </div>
+    </div>
+    <div class="app-body">
+      <!-- Sidebar -->
+      <div class="sidebar" id="sb1">
+        <div class="sidebar-toggle" onclick="toggleSb('sb1')">‹</div>
+        <div class="sidebar-inner">
+          <div class="couple-row" style="border-color:#f9a8d4;background:#fdf2f8;margin-bottom:3px;"><span>💐</span><span style="font-weight:600;color:#be185d;font-size:11px;">Maggie</span><span style="font-size:9px;color:#9d174d;">Head Table</span></div>
+          <div class="couple-row" style="border-color:var(--color-sage);background:#f0fdf4;margin-bottom:10px;"><span>🌿</span><span style="font-weight:600;color:#065f46;font-size:11px;">Bobby</span><span style="font-size:9px;color:#047857;">Head Table</span></div>
+          <input class="sidebar-search" type="text" placeholder="Filter guests…" readonly />
+          <div class="sec-header"><span class="sec-label">Unassigned (4)</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#EDAFB8;"></span><span class="g-name">Sarah Johnson</span><span class="g-tag tag-b">B</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#B0C4B1;"></span><span class="g-name">James Wilson</span><span class="g-tag tag-g">G</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#EDAFB8;"></span><span class="g-name">Emma Thompson</span><span class="g-tag tag-b">B</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#B0C4B1;"></span><span class="g-name">Tom Fletcher</span><span class="g-tag tag-g">G</span></div>
+        </div>
+      </div>
+
+      <!-- Main -->
+      <div class="main-area">
+        <div class="seating-header">
+          <div><h2>Seating Plan</h2><div class="meta">120 guests · 12 tables · 4 unassigned · room view active</div></div>
+          <div class="header-actions">
+            <button class="btn btn-sage">Auto Assign</button>
+            <button class="btn btn-ghost">Constraints (2)</button>
+            <button class="btn btn-ghost">Print</button>
+            <button class="btn-icon" onclick="openM('m1')" title="Room Setup">⚙</button>
+            <button class="btn-icon on" title="Hide canvas">⊞</button>
+          </div>
+        </div>
+
+        <!-- THE CANVAS — full height, guest names around tables -->
+        <div class="canvas-wrap open" style="height:480px;">
+          <div class="room-svg-bg" id="canvas1">
+
+            <!-- Head table (rectangle) -->
+            <div class="tg" style="left:50%;top:9%;">
+              <div class="ht-rect" style="width:200px;height:42px;">
+                <span style="font-size:9px;font-weight:600;">Head Table</span>
+                <span style="font-size:7px;color:var(--color-subtle);font-family:ui-sans-serif,sans-serif;font-weight:400;">8 seats</span>
+              </div>
+              <!-- Seats along top edge -->
+              <div class="seat-pin" style="left:25px;top:-16px;"><div class="seat-circle bride-seat"></div><span class="seat-name-label">Maggie</span></div>
+              <div class="seat-pin" style="left:65px;top:-16px;"><div class="seat-circle groom-seat"></div><span class="seat-name-label">Bobby</span></div>
+              <div class="seat-pin" style="left:105px;top:-16px;"><div class="seat-circle bride-seat"></div><span class="seat-name-label">Claire D</span></div>
+              <div class="seat-pin" style="left:145px;top:-16px;"><div class="seat-circle groom-seat"></div><span class="seat-name-label">Mark W</span></div>
+              <!-- Seats along bottom edge -->
+              <div class="seat-pin" style="left:25px;top:58px;"><span class="seat-name-label">Rachel J</span><div class="seat-circle bride-seat"></div></div>
+              <div class="seat-pin" style="left:65px;top:58px;"><span class="seat-name-label">Daniel H</span><div class="seat-circle groom-seat"></div></div>
+              <div class="seat-pin" style="left:105px;top:58px;"><span class="seat-name-label">Sophie B</span><div class="seat-circle bride-seat"></div></div>
+              <div class="seat-pin" style="left:145px;top:58px;"><span class="seat-name-label">Adam F</span><div class="seat-circle groom-seat"></div></div>
+            </div>
+
+            <!-- Table 1 — Roses -->
+            <div class="tg" id="t1" style="left:13%;top:35%;" data-table="roses">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Roses</span><span class="tc-sub">10/10</span></div>
+              <!-- 10 seats generated by JS -->
+            </div>
+
+            <!-- Table 2 — Lavender (conflict) -->
+            <div class="tg" id="t2" style="left:30%;top:35%;" data-table="lavender">
+              <div class="tc-bg conflict" style="width:60px;height:60px;"><span class="tc-name">Lavender</span><span class="tc-sub">⚠ conflict</span></div>
+            </div>
+
+            <!-- Table 3 — Dahlia -->
+            <div class="tg" id="t3" style="left:47%;top:35%;" data-table="dahlia">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Dahlia</span><span class="tc-sub">10/10</span></div>
+            </div>
+
+            <!-- Table 4 — Peony -->
+            <div class="tg" id="t4" style="left:64%;top:35%;" data-table="peony">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Peony</span><span class="tc-sub">8/10</span></div>
+            </div>
+
+            <!-- Table 5 — Iris -->
+            <div class="tg" id="t5" style="left:81%;top:35%;" data-table="iris">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Iris</span><span class="tc-sub">10/10</span></div>
+            </div>
+
+            <!-- Table 6 — Jasmine -->
+            <div class="tg" id="t6" style="left:13%;top:72%;" data-table="jasmine">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Jasmine</span><span class="tc-sub">9/10</span></div>
+            </div>
+
+            <!-- Table 7 — Orchid -->
+            <div class="tg" id="t7" style="left:30%;top:72%;" data-table="orchid">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Orchid</span><span class="tc-sub">10/10</span></div>
+            </div>
+
+            <!-- Table 8 — Wisteria -->
+            <div class="tg" id="t8" style="left:47%;top:72%;" data-table="wisteria">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Wisteria</span><span class="tc-sub">10/10</span></div>
+            </div>
+
+            <!-- Table 9 — Magnolia -->
+            <div class="tg" id="t9" style="left:64%;top:72%;" data-table="magnolia">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Magnolia</span><span class="tc-sub">8/10</span></div>
+            </div>
+
+            <!-- Table 10 — Bluebell -->
+            <div class="tg" id="t10" style="left:81%;top:72%;" data-table="bluebell">
+              <div class="tc-bg" style="width:60px;height:60px;"><span class="tc-name">Bluebell</span><span class="tc-sub">10/10</span></div>
+            </div>
+
+            <div class="canvas-legend">
+              <span><span class="legend-dot" style="background:var(--color-pink);"></span>Bride side</span>
+              <span><span class="legend-dot" style="background:var(--color-sage);"></span>Groom side</span>
+              <span><span class="legend-dot" style="background:var(--color-stone);"></span>Empty seat</span>
+              <span><span class="legend-dot" style="background:var(--color-warm-red);"></span>Conflict</span>
+            </div>
+            <div class="canvas-hint">Drag tables to reposition · names update live</div>
+
+            <!-- Modal -->
+            <div class="modal-overlay" id="m1">
+              <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal-title">⚙ Room Setup</div>
+                <div class="modal-sub">One-time venue and table configuration</div>
+                <button class="modal-close" onclick="closeM('m1')">×</button>
+                <div class="msec">Venue</div>
+                <div class="f-row"><label>Room preset</label><select><option>Rectangular ballroom</option></select></div>
+                <div class="f-inline">
+                  <div class="f-row"><label>Aspect ratio</label><select><option>3:2</option></select></div>
+                  <div class="f-row"><label>Seats per table</label><input type="number" value="10" /></div>
+                </div>
+                <div class="f-row" style="margin-bottom:16px;"><label>Table shape</label>
+                  <div class="shape-sel">
+                    <div class="shape-opt on"><span class="shape-icon">⬭</span>Round</div>
+                    <div class="shape-opt"><span class="shape-icon">▬</span>Rect</div>
+                    <div class="shape-opt"><span class="shape-icon">⬡</span>Oval</div>
+                  </div>
+                </div>
+                <div class="msec">Tables</div>
+                <div class="tli"><div class="tli-icon">HT</div><span class="tli-name">Head Table</span><span class="tli-cap">8 · Rect</span><div class="tli-btns"><button class="tli-btn">✏</button><button class="tli-btn" style="color:var(--color-warm-red);">✕</button></div></div>
+                <div class="tli"><div class="tli-icon">T1</div><span class="tli-name">Roses</span><span class="tli-cap">10 · Round</span><div class="tli-btns"><button class="tli-btn">✏</button><button class="tli-btn" style="color:var(--color-warm-red);">✕</button></div></div>
+                <div class="tli"><div class="tli-icon">T2</div><span class="tli-name">Lavender</span><span class="tli-cap">10 · Round</span><div class="tli-btns"><button class="tli-btn">✏</button><button class="tli-btn" style="color:var(--color-warm-red);">✕</button></div></div>
+                <div style="text-align:center;margin-top:5px;"><button class="btn btn-ghost" style="font-size:10px;">+ Add table</button></div>
+                <div class="modal-foot">
+                  <button class="btn btn-ghost" onclick="closeM('m1')">Cancel</button>
+                  <button class="btn-primary">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-bar">
+          <span><strong>116</strong> seated</span>
+          <span><strong>4</strong> unassigned</span>
+          <span><strong>12</strong> tables</span>
+          <span style="color:var(--color-warm-red);font-weight:600;">⚠ 1 conflict</span>
+          <span style="color:var(--color-sage);font-weight:600;">✓ No overlaps</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ann">
+    <h3>Canvas now shows who is sitting where — at a glance across the whole room</h3>
+    <p>
+      <span class="pill p-new">New</span> Each table shows guest first names on seat dots radiating around it — pink for Bride side, green for Groom side, warm red for any conflicts. Empty seats show as grey dashed dots. The Head Table shows seats above and below the rectangle. Drag any table to reposition it in the room; the names move with it.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCENE 2 — Canvas + cards together (split view)
+═══════════════════════════════════════════════════════════ -->
+<div id="s2" style="display:none;">
+  <div class="scene-label"><span class="dot"></span> Scene 2 — Canvas panel above table cards (both visible at once)</div>
+  <div class="app-frame">
+    <div class="app-topbar">
+      <span class="logo">M &amp; B</span>
+      <div class="nav-items"><span class="nav-item active">Seating</span></div>
+    </div>
+    <div class="app-body">
+      <div class="sidebar" id="sb2">
+        <div class="sidebar-toggle" onclick="toggleSb('sb2')">‹</div>
+        <div class="sidebar-inner">
+          <input class="sidebar-search" type="text" placeholder="Filter guests…" readonly />
+          <div class="sec-header" style="margin-bottom:5px;"><span class="sec-label">Unassigned (4)</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#EDAFB8;"></span><span class="g-name">Sarah Johnson</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#B0C4B1;"></span><span class="g-name">James Wilson</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#EDAFB8;"></span><span class="g-name">Emma Thompson</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#B0C4B1;"></span><span class="g-name">Tom Fletcher</span></div>
+        </div>
+      </div>
+      <div class="main-area">
+        <div class="seating-header">
+          <div><h2>Seating Plan</h2><div class="meta">canvas + cards both visible</div></div>
+          <div class="header-actions">
+            <button class="btn btn-sage">Auto Assign</button>
+            <button class="btn btn-ghost">Constraints</button>
+            <button class="btn btn-ghost">Print</button>
+            <button class="btn-icon" title="Room Setup">⚙</button>
+            <button class="btn-icon on">⊞</button>
+          </div>
+        </div>
+
+        <!-- Compact canvas -->
+        <div class="canvas-wrap open" style="height:230px;">
+          <div class="room-svg-bg" id="canvas2">
+            <!-- Head table -->
+            <div class="tg" style="left:50%;top:12%;transform:translate(-50%,-50%);">
+              <div class="ht-rect" style="width:160px;height:34px;"><span style="font-size:8px;font-weight:600;">Head Table</span></div>
+              <div class="seat-pin" style="left:20px;top:-14px;"><div class="seat-circle bride-seat"></div><span class="seat-name-label">Maggie</span></div>
+              <div class="seat-pin" style="left:50px;top:-14px;"><div class="seat-circle groom-seat"></div><span class="seat-name-label">Bobby</span></div>
+              <div class="seat-pin" style="left:80px;top:-14px;"><div class="seat-circle bride-seat"></div><span class="seat-name-label">Claire</span></div>
+              <div class="seat-pin" style="left:110px;top:-14px;"><div class="seat-circle groom-seat"></div><span class="seat-name-label">Mark</span></div>
+              <div class="seat-pin" style="left:20px;top:48px;"><span class="seat-name-label">Rachel</span><div class="seat-circle bride-seat"></div></div>
+              <div class="seat-pin" style="left:55px;top:48px;"><span class="seat-name-label">Daniel</span><div class="seat-circle groom-seat"></div></div>
+              <div class="seat-pin" style="left:90px;top:48px;"><span class="seat-name-label">Sophie</span><div class="seat-circle bride-seat"></div></div>
+              <div class="seat-pin" style="left:125px;top:48px;"><span class="seat-name-label">Adam</span><div class="seat-circle groom-seat"></div></div>
+            </div>
+
+            <!-- Small round tables in compact mode — just dots around them for space -->
+            <div class="tg" style="left:9%;top:55%;"><div class="tc-bg" style="width:46px;height:46px;font-size:7px;"><span class="tc-name" style="font-size:8px;">Roses</span></div></div>
+            <div class="tg" style="left:22%;top:55%;"><div class="tc-bg conflict" style="width:46px;height:46px;"><span class="tc-name" style="font-size:8px;">Lavender</span></div></div>
+            <div class="tg" style="left:35%;top:55%;"><div class="tc-bg" style="width:46px;height:46px;"><span class="tc-name" style="font-size:8px;">Dahlia</span></div></div>
+            <div class="tg" style="left:48%;top:55%;"><div class="tc-bg" style="width:46px;height:46px;"><span class="tc-name" style="font-size:8px;">Peony</span></div></div>
+            <div class="tg" style="left:61%;top:55%;"><div class="tc-bg" style="width:46px;height:46px;"><span class="tc-name" style="font-size:8px;">Iris</span></div></div>
+            <div class="tg" style="left:74%;top:55%;"><div class="tc-bg" style="width:46px;height:46px;"><span class="tc-name" style="font-size:8px;">Jasmine</span></div></div>
+            <div class="tg" style="left:87%;top:55%;"><div class="tc-bg" style="width:46px;height:46px;"><span class="tc-name" style="font-size:8px;">Orchid</span></div></div>
+
+            <div class="canvas-hint" style="font-size:8px;">Compact view — ⊞ to expand full canvas</div>
+          </div>
+        </div>
+
+        <!-- Table cards below -->
+        <div class="cards-area" style="max-height:240px;">
+          <div class="cards-grid">
+            <div class="table-card" style="border-color:var(--color-pink);">
+              <div class="tc-hdr"><span class="tc-title">Head Table</span><span class="tc-cap">8 / 8</span></div>
+              <div class="tc-bar"><div class="tc-bar-fill" style="width:100%;background:var(--color-pink);"></div></div>
+              <div class="tc-seats">
+                <div class="s-row filled"><span class="s-num">1</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Maggie Davey</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">2</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Bobby Smith</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">3</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Claire Davies</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">4</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Mark Wilson</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+              </div>
+              <div class="tc-foot"><span style="font-size:9px;color:var(--color-sage);font-weight:600;">✓ Full</span></div>
+            </div>
+            <div class="table-card">
+              <div class="tc-hdr"><span class="tc-title">Roses</span><span class="tc-cap">8 / 10</span></div>
+              <div class="tc-bar"><div class="tc-bar-fill" style="width:80%;"></div></div>
+              <div class="tc-seats">
+                <div class="s-row filled"><span class="s-num">1</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Jane Miller</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">2</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Chris Parker</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row empty"><span class="s-num">9</span><span style="font-style:italic;font-size:10px;">Drop guest here…</span></div>
+                <div class="s-row empty"><span class="s-num">10</span><span style="font-style:italic;font-size:10px;">Drop guest here…</span></div>
+              </div>
+              <div class="tc-foot"><span style="font-size:9px;color:#a07820;font-weight:600;">2 empty</span></div>
+            </div>
+            <div class="table-card" style="border-color:#fca5a5;">
+              <div class="tc-hdr"><span class="tc-title">Lavender</span><span style="font-size:10px;color:var(--color-warm-red);">⚠ Conflict</span></div>
+              <div class="tc-bar"><div class="tc-bar-fill" style="width:100%;"></div></div>
+              <div class="tc-seats">
+                <div class="s-row filled" style="background:#fff5f5;border-color:#fca5a5;"><span class="s-num">1</span><span class="s-dot" style="background:#C0736A;"></span><span class="s-nm">Diane Young</span><span style="font-size:8px;color:var(--color-warm-red);">⚠ avoid</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled" style="background:#fff5f5;border-color:#fca5a5;"><span class="s-num">2</span><span class="s-dot" style="background:#C0736A;"></span><span class="s-nm">Rob Young</span><span style="font-size:8px;color:var(--color-warm-red);">⚠ avoid</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">3</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Steve Hunt</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+              </div>
+              <div class="tc-foot"><span style="font-size:9px;color:var(--color-warm-red);font-weight:600;">🚨 1 conflict</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="stats-bar"><span><strong>116</strong> seated</span><span><strong>4</strong> unassigned</span><span><strong>12</strong> tables</span><span style="color:var(--color-warm-red);font-weight:600;">⚠ 1 conflict</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="ann">
+    <h3>Compact canvas stays visible above the table cards</h3>
+    <p>When the canvas panel is open alongside the cards, it switches to a compact mode — tables are smaller and show names on hover. The table cards below remain fully interactive for drag-and-drop assignment. Clicking ⊞ again collapses the canvas to give the cards the full height.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCENE 3 — Table cards only
+═══════════════════════════════════════════════════════════ -->
+<div id="s3" style="display:none;">
+  <div class="scene-label"><span class="dot"></span> Scene 3 — Table cards view (canvas hidden, ⊞ off)</div>
+  <div class="app-frame">
+    <div class="app-topbar"><span class="logo">M &amp; B</span><div class="nav-items"><span class="nav-item active">Seating</span></div></div>
+    <div class="app-body">
+      <div class="sidebar" id="sb3">
+        <div class="sidebar-toggle" onclick="toggleSb('sb3')">‹</div>
+        <div class="sidebar-inner">
+          <input class="sidebar-search" type="text" placeholder="Filter guests…" readonly />
+          <div class="sec-header"><span class="sec-label">Unassigned (4)</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#EDAFB8;"></span><span class="g-name">Sarah Johnson</span><span class="g-tag tag-b">B</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#B0C4B1;"></span><span class="g-name">James Wilson</span><span class="g-tag tag-g">G</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#EDAFB8;"></span><span class="g-name">Emma Thompson</span><span class="g-tag tag-b">B</span></div>
+          <div class="guest-row"><span class="g-dot" style="background:#B0C4B1;"></span><span class="g-name">Tom Fletcher</span><span class="g-tag tag-g">G</span></div>
+        </div>
+      </div>
+      <div class="main-area">
+        <div class="seating-header">
+          <div><h2>Seating Plan</h2><div class="meta">120 guests · 12 tables · 4 unassigned</div></div>
+          <div class="header-actions">
+            <button class="btn btn-sage">Auto Assign</button>
+            <button class="btn btn-ghost">Constraints (2)</button>
+            <button class="btn btn-ghost">Print</button>
+            <button class="btn-icon" title="Room Setup">⚙</button>
+            <button class="btn-icon" title="Show canvas">⊞</button>
+          </div>
+        </div>
+        <div class="cards-area">
+          <div class="cards-grid">
+            <div class="table-card" style="border-color:var(--color-pink);">
+              <div class="tc-hdr"><span class="tc-title">Head Table</span><span class="tc-cap">8 / 8</span></div>
+              <div class="tc-bar"><div class="tc-bar-fill" style="width:100%;background:var(--color-pink);"></div></div>
+              <div class="tc-seats">
+                <div class="s-row filled"><span class="s-num">1</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Maggie Davey</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">2</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Bobby Smith</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">3</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Claire Davies</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">4</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Mark Wilson</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">5</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Rachel Johnson</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">6</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Daniel Hart</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">7</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Sophie Brown</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">8</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Adam Fletcher</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+              </div>
+              <div class="tc-foot"><span style="font-size:9px;color:var(--color-sage);font-weight:600;">✓ Full</span><div class="tc-acts"><button class="tc-btn">Clear</button></div></div>
+            </div>
+            <div class="table-card">
+              <div class="tc-hdr"><span class="tc-title">Roses</span><span class="tc-cap">8 / 10</span></div>
+              <div class="tc-bar"><div class="tc-bar-fill" style="width:80%;"></div></div>
+              <div class="tc-seats">
+                <div class="s-row filled"><span class="s-num">1</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Jane Miller</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">2</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Kate Spencer</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">3</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Chris Parker</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">4</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Amy Lawrence</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">5</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Paul Evans</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">6</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Fiona Clarke</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">7</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Gary Moore</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">8</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Neil Taylor</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row empty"><span class="s-num">9</span><span style="font-style:italic;font-size:10px;">Drop guest here…</span></div>
+                <div class="s-row empty"><span class="s-num">10</span><span style="font-style:italic;font-size:10px;">Drop guest here…</span></div>
+              </div>
+              <div class="tc-foot"><span style="font-size:9px;color:#a07820;font-weight:600;">2 empty seats</span><div class="tc-acts"><button class="tc-btn">Auto-fill</button><button class="tc-btn">Clear</button></div></div>
+            </div>
+            <div class="table-card" style="border-color:#fca5a5;">
+              <div class="tc-hdr"><span class="tc-title">Lavender</span><span style="font-size:10px;color:var(--color-warm-red);">⚠ Conflict</span></div>
+              <div class="tc-bar"><div class="tc-bar-fill" style="width:100%;"></div></div>
+              <div class="tc-seats">
+                <div class="s-row filled" style="background:#fff5f5;border-color:#fca5a5;"><span class="s-num">1</span><span class="s-dot" style="background:#C0736A;"></span><span class="s-nm">Diane Young</span><span style="font-size:8px;color:var(--color-warm-red);">⚠ avoid</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled" style="background:#fff5f5;border-color:#fca5a5;"><span class="s-num">2</span><span class="s-dot" style="background:#C0736A;"></span><span class="s-nm">Rob Young</span><span style="font-size:8px;color:var(--color-warm-red);">⚠ avoid</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">3</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Steve Hunt</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">4</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Lisa Hunt</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">5</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Ian Ross</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">6</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Carol Ross</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">7</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Ben Walsh</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">8</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Helen Walsh</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">9</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Dan Price</span><span class="s-side">Groom</span><span class="s-mv">⇄</span></div>
+                <div class="s-row filled"><span class="s-num">10</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Sue Price</span><span class="s-side">Bride</span><span class="s-mv">⇄</span></div>
+              </div>
+              <div class="tc-foot"><span style="font-size:9px;color:var(--color-warm-red);font-weight:600;">🚨 1 AVOID</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="stats-bar"><span><strong>116</strong> seated</span><span><strong>4</strong> unassigned</span><span><strong>12</strong> tables</span><span style="color:var(--color-warm-red);font-weight:600;">⚠ 1 conflict</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="ann">
+    <h3>Table cards are the default — canvas is one click away</h3>
+    <p><span class="pill p-ok">Preserved</span> Table cards show every guest name and seat. The ⊞ button opens the canvas above when you want the room-layout view. Canvas off = maximum space for assigning guests by drag-and-drop.</p>
+  </div>
+</div>
+
+<!-- SCENE 4 — Sidebar collapsed -->
+<div id="s4" style="display:none;">
+  <div class="scene-label"><span class="dot"></span> Scene 4 — Sidebar collapsed, canvas open, 4-column card grid</div>
+  <div class="app-frame">
+    <div class="app-topbar"><span class="logo">M &amp; B</span><div class="nav-items"><span class="nav-item active">Seating</span></div></div>
+    <div class="app-body">
+      <div class="sidebar collapsed" id="sb4">
+        <div class="sidebar-toggle" onclick="toggleSb('sb4')" style="border-bottom:none;">›</div>
+      </div>
+      <div class="main-area">
+        <div class="seating-header">
+          <div><h2>Seating Plan</h2><div class="meta">sidebar collapsed · full width</div></div>
+          <div class="header-actions">
+            <button class="btn btn-sage">Auto Assign</button>
+            <button class="btn btn-ghost">Constraints</button>
+            <button class="btn btn-ghost">Print</button>
+            <button class="btn-icon">⚙</button>
+            <button class="btn-icon on">⊞</button>
+          </div>
+        </div>
+        <div class="canvas-wrap open" style="height:200px;">
+          <div class="room-svg-bg">
+            <div class="tg" style="left:50%;top:14%;transform:translate(-50%,-50%);">
+              <div class="ht-rect" style="width:170px;height:34px;"><span style="font-size:8px;font-weight:600;">Head Table</span></div>
+              <div class="seat-pin" style="left:15px;top:-14px;"><div class="seat-circle bride-seat"></div><span class="seat-name-label">Maggie</span></div>
+              <div class="seat-pin" style="left:45px;top:-14px;"><div class="seat-circle groom-seat"></div><span class="seat-name-label">Bobby</span></div>
+              <div class="seat-pin" style="left:80px;top:-14px;"><div class="seat-circle bride-seat"></div><span class="seat-name-label">Claire</span></div>
+              <div class="seat-pin" style="left:115px;top:-14px;"><div class="seat-circle groom-seat"></div><span class="seat-name-label">Mark</span></div>
+            </div>
+            <div class="tg" style="left:7%;top:60%;"><div class="tc-bg" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Roses</span></div></div>
+            <div class="tg" style="left:19%;top:60%;"><div class="tc-bg conflict" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Lavender</span></div></div>
+            <div class="tg" style="left:31%;top:60%;"><div class="tc-bg" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Dahlia</span></div></div>
+            <div class="tg" style="left:43%;top:60%;"><div class="tc-bg" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Peony</span></div></div>
+            <div class="tg" style="left:55%;top:60%;"><div class="tc-bg" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Iris</span></div></div>
+            <div class="tg" style="left:67%;top:60%;"><div class="tc-bg" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Jasmine</span></div></div>
+            <div class="tg" style="left:79%;top:60%;"><div class="tc-bg" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Orchid</span></div></div>
+            <div class="tg" style="left:91%;top:60%;"><div class="tc-bg" style="width:50px;height:50px;"><span class="tc-name" style="font-size:8px;">Wisteria</span></div></div>
+          </div>
+        </div>
+        <div class="cards-area" style="max-height:200px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            <div class="table-card" style="border-color:var(--color-pink);">
+              <div class="tc-hdr"><span class="tc-title">Head Table</span><span class="tc-cap">8/8</span></div>
+              <div class="tc-bar"><div class="tc-bar-fill" style="width:100%;background:var(--color-pink);"></div></div>
+              <div class="tc-seats">
+                <div class="s-row filled"><span class="s-num">1</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Maggie</span></div>
+                <div class="s-row filled"><span class="s-num">2</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">Bobby</span></div>
+              </div>
+            </div>
+            <div class="table-card"><div class="tc-hdr"><span class="tc-title">Roses</span><span class="tc-cap">8/10</span></div><div class="tc-bar"><div class="tc-bar-fill" style="width:80%;"></div></div><div class="tc-seats"><div class="s-row filled"><span class="s-num">1</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Jane M</span></div><div class="s-row empty"><span class="s-num">9</span><span style="font-style:italic;font-size:10px;">Empty</span></div></div></div>
+            <div class="table-card" style="border-color:#fca5a5;"><div class="tc-hdr"><span class="tc-title">Lavender</span><span style="font-size:10px;color:var(--color-warm-red);">⚠</span></div><div class="tc-bar"><div class="tc-bar-fill" style="width:100%;"></div></div><div class="tc-seats"><div class="s-row filled" style="background:#fff5f5;border-color:#fca5a5;"><span class="s-num">1</span><span class="s-dot" style="background:#C0736A;"></span><span class="s-nm">Diane Y</span></div></div></div>
+            <div class="table-card"><div class="tc-hdr"><span class="tc-title">Dahlia</span><span class="tc-cap">10/10</span></div><div class="tc-bar"><div class="tc-bar-fill" style="width:100%;"></div></div><div class="tc-seats"><div class="s-row filled"><span class="s-num">1</span><span class="s-dot" style="background:#EDAFB8;"></span><span class="s-nm">Anna R</span></div><div class="s-row filled"><span class="s-num">2</span><span class="s-dot" style="background:#B0C4B1;"></span><span class="s-nm">John R</span></div></div></div>
+          </div>
+        </div>
+        <div class="stats-bar"><span><strong>116</strong> seated</span><span><strong>12</strong> tables</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="ann">
+    <h3>Full width = 4-column grid + wider canvas</h3>
+    <p>Collapsing the sidebar gives the canvas and table cards the full screen width. The card grid expands to 4 columns. Good for a final review pass once most guests are seated.</p>
+  </div>
+</div>
+
+<!-- SCENE 5 — Room Setup modal -->
+<div id="s5" style="display:none;">
+  <div class="scene-label"><span class="dot"></span> Scene 5 — Room Setup modal</div>
+  <div class="app-frame" style="position:relative;">
+    <div class="app-topbar"><span class="logo">M &amp; B</span></div>
+    <div class="app-body" style="opacity:0.22;pointer-events:none;height:420px;">
+      <div style="width:210px;background:var(--color-blush);border-right:1px solid var(--color-stone);"></div>
+      <div style="flex:1;padding:16px;"><div style="height:50px;background:var(--color-stone);border-radius:8px;margin-bottom:12px;"></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"><div style="height:180px;background:white;border-radius:10px;border:1px solid var(--color-stone);"></div><div style="height:180px;background:white;border-radius:10px;border:1px solid var(--color-stone);"></div><div style="height:180px;background:white;border-radius:10px;border:1px solid var(--color-stone);"></div></div></div>
+    </div>
+    <div style="position:absolute;inset:0;background:rgba(74,87,89,0.45);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);">
+      <div class="modal" style="transform:none;">
+        <div class="modal-title">⚙ Room Setup</div>
+        <div class="modal-sub">One-time venue and table configuration</div>
+        <button class="modal-close">×</button>
+        <div class="msec">Venue Configuration</div>
+        <div class="f-row"><label>Room preset</label><select><option>Rectangular ballroom</option></select></div>
+        <div class="f-inline">
+          <div class="f-row"><label>Aspect ratio</label><select><option>3:2 (landscape)</option></select></div>
+          <div class="f-row"><label>Seats per table</label><input type="number" value="10" /></div>
+        </div>
+        <div class="f-row" style="margin-bottom:16px;"><label>Table shape</label>
+          <div class="shape-sel">
+            <div class="shape-opt on"><span class="shape-icon">⬭</span>Round</div>
+            <div class="shape-opt"><span class="shape-icon">▬</span>Rect</div>
+            <div class="shape-opt"><span class="shape-icon">⬡</span>Oval</div>
+          </div>
+        </div>
+        <div class="msec">Manage Tables</div>
+        <div class="tli"><div class="tli-icon">HT</div><span class="tli-name">Head Table</span><span class="tli-cap">8 · Rect</span><div class="tli-btns"><button class="tli-btn">✏</button><button class="tli-btn" style="color:var(--color-warm-red);">✕</button></div></div>
+        <div class="tli"><div class="tli-icon">T1</div><span class="tli-name">Roses</span><span class="tli-cap">10 · Round</span><div class="tli-btns"><button class="tli-btn">✏</button><button class="tli-btn" style="color:var(--color-warm-red);">✕</button></div></div>
+        <div style="text-align:center;margin-top:5px;"><button class="btn btn-ghost" style="font-size:10px;">+ Add table</button></div>
+        <div class="modal-foot"><button class="btn btn-ghost">Cancel</button><button class="btn-primary">Save</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="ann">
+    <h3>⚙ Setup is out of the way — use it once, forget about it</h3>
+    <p><span class="pill p-rm">Removed</span> Room / Tables tabs from nav. <span class="pill p-new">New</span> Single ⚙ button in header. Venue config and table management live together here, behind a scrim.</p>
+  </div>
+</div>
+
+<!-- SCENE 6 — Collision demo -->
+<div id="s6" style="display:none;">
+  <div class="scene-label"><span class="dot"></span> Scene 6 — Collision prevention in the canvas</div>
+  <div class="app-frame">
+    <div class="app-topbar"><span class="logo">M &amp; B</span></div>
+    <div class="app-body">
+      <div class="sidebar collapsed"><div class="sidebar-toggle" style="border-bottom:none;">›</div></div>
+      <div class="main-area">
+        <div class="seating-header">
+          <div><h2>Seating Plan</h2><div class="meta">drag Dahlia onto Peony — watch it snap clear</div></div>
+          <div class="header-actions">
+            <button class="btn" onclick="runDemo()" style="border-color:var(--color-sage);color:var(--color-charcoal);">▶ Demo collision fix</button>
+            <button class="btn-icon on">⊞</button>
+          </div>
+        </div>
+        <div class="canvas-wrap open" style="height:320px;">
+          <div class="room-svg-bg" id="cvs6">
+            <div class="tg" style="left:50%;top:10%;transform:translate(-50%,-50%);">
+              <div class="ht-rect" style="width:160px;height:34px;"><span style="font-size:8px;font-weight:600;">Head Table</span></div>
+            </div>
+            <div class="tg" style="left:9%;top:42%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Roses</span></div></div>
+            <div class="tg" style="left:23%;top:42%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Lavender</span></div></div>
+            <div class="tg" id="td" style="left:37%;top:42%;">
+              <div class="tc-bg" id="tdc" style="width:54px;height:54px;border-color:var(--color-charcoal);border-width:2px;">
+                <span class="tc-name" style="font-size:8px;">Dahlia</span><span class="tc-sub">← drag</span>
+              </div>
+            </div>
+            <div class="tg" style="left:51%;top:42%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Peony</span></div></div>
+            <div class="tg" style="left:65%;top:42%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Iris</span></div></div>
+            <div class="tg" style="left:79%;top:42%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Jasmine</span></div></div>
+            <div class="tg" style="left:9%;top:78%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Orchid</span></div></div>
+            <div class="tg" style="left:23%;top:78%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Wisteria</span></div></div>
+            <div class="tg" style="left:37%;top:78%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Magnolia</span></div></div>
+            <div class="tg" style="left:51%;top:78%;"><div class="tc-bg" style="width:54px;height:54px;"><span class="tc-name" style="font-size:8px;">Bluebell</span></div></div>
+            <div class="ctoast" id="ct6">↔ Overlap — snapping to nearest free spot</div>
+          </div>
+        </div>
+        <div class="stats-bar">
+          <span><strong>116</strong> seated</span><span><strong>12</strong> tables</span>
+          <span id="ovs" style="color:var(--color-sage);font-weight:600;">✓ No overlaps</span>
+          <span style="font-size:11px;color:var(--color-subtle);">Click "Demo collision fix" →</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ann">
+    <h3>Collision prevention — tables can never sit on top of each other</h3>
+    <p>Dropping Dahlia onto Peony triggers a spiral search for the nearest clear position and snaps the table there with a spring animation. No overlapping allowed — ever.</p>
+  </div>
+</div>
+
+<script>
+  // ── Scene data: guest names for round tables ─────────────────────────────
+  const tableData = {
+    roses:    { guests: ['Jane M','Kate S','Chris P','Amy L','Paul E','Fiona C','Gary M','Neil T','',''], side: ['b','b','g','b','g','b','g','g','',''] },
+    lavender: { guests: ['Diane Y','Rob Y','Steve H','Lisa H','Ian R','Carol R','Ben W','Helen W','Dan P','Sue P'], side: ['b','b','g','b','g','b','g','b','g','b'] },
+    dahlia:   { guests: ['Anna R','John R','Mary C','Simon C','Tina F','Nick F','Jen M','Lee M','Gill A','Pete A'], side: ['b','g','b','g','b','g','b','g','b','g'] },
+    peony:    { guests: ['Sarah B','Tom B','Ella G','Jack G','Rose T','','Max H','Lily H','',''], side: ['b','g','b','g','b','','g','b','',''] },
+    iris:     { guests: ['Pat N','Ed N','Gwen L','Huw L','Bea J','Al J','Dot K','Rex K','Flora S','Glen S'], side: ['b','g','b','g','b','g','b','g','b','g'] },
+    jasmine:  { guests: ['Iris O','Clive O','Nell P','Fred P','Vera Q','Stan Q','Mary R','Bob R','Ann S',''], side: ['b','g','b','g','b','g','b','g','b',''] },
+    orchid:   { guests: ['Kay T','Don T','Bev U','Roy U','Fay V','Ken V','Joan W','Ted W','Amy X','Joe X'], side: ['b','g','b','g','b','g','b','g','b','g'] },
+    wisteria: { guests: ['Meg Y','Alf Y','Cora Z','Bert Z','Lena A','Hugh A','Ruth B','Eric B','Tess C','Norm C'], side: ['b','g','b','g','b','g','b','g','b','g'] },
+    magnolia: { guests: ['Edna D','Walt D','Maud E','Vic E','Nora F','Sid F','Elsie G','Art G','',''], side: ['b','g','b','g','b','g','b','g','',''] },
+    bluebell: { guests: ['Olive H','Len H','Grace I','Frank I','Pam J','Reg J','Connie K','Cyril K','Dot L','Ern L'], side: ['b','g','b','g','b','g','b','g','b','g'] },
+  }
+
+  // ── Render seats around round tables ─────────────────────────────────────
+  function renderSeats() {
+    const tableIds = ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10']
+    tableIds.forEach(id => {
+      const el = document.getElementById(id)
+      if (!el) return
+      const key = el.dataset.table
+      const data = tableData[key]
+      if (!data) return
+      const n = data.guests.length
+      const r = 52 // radius from table centre to seat dot (px)
+      const centerX = 30, centerY = 30 // half of 60x60 table
+      data.guests.forEach((name, i) => {
+        const angle = (2 * Math.PI * i / n) - Math.PI / 2
+        const sx = centerX + r * Math.cos(angle)
+        const sy = centerY + r * Math.sin(angle)
+        const pin = document.createElement('div')
+        pin.className = 'seat-pin'
+        pin.style.left = sx + 'px'
+        pin.style.top = sy + 'px'
+        const dot = document.createElement('div')
+        dot.className = 'seat-circle ' + (name === '' ? 'empty-seat' : (key === 'lavender' && i < 2 ? 'conflict-seat' : (data.side[i] === 'b' ? 'bride-seat' : 'groom-seat')))
+        const label = document.createElement('span')
+        label.className = 'seat-name-label ' + (name === '' ? 'empty-label' : '')
+        label.textContent = name || '—'
+        // Position label: above dot if in top half, below if bottom
+        if (sy < centerY) {
+          pin.appendChild(label)
+          pin.appendChild(dot)
+        } else {
+          pin.appendChild(dot)
+          pin.appendChild(label)
+        }
+        el.appendChild(pin)
+      })
+    })
+  }
+  renderSeats()
+
+  // ── Scene switcher ────────────────────────────────────────────────────────
+  function show(id) {
+    ['s1','s2','s3','s4','s5','s6'].forEach(s => document.getElementById(s).style.display = s===id?'':'none')
+    document.querySelectorAll('.scene-btn').forEach((b,i) => b.classList.toggle('active', ['s1','s2','s3','s4','s5','s6'][i]===id))
+  }
+
+  // ── Sidebar toggle ────────────────────────────────────────────────────────
+  function toggleSb(id) {
+    const sb = document.getElementById(id)
+    if (!sb) return
+    const c = sb.classList.toggle('collapsed')
+    const t = sb.querySelector('.sidebar-toggle')
+    if (t) t.textContent = c ? '›' : '‹'
+  }
+
+  // ── Modal ─────────────────────────────────────────────────────────────────
+  function openM(id)  { const m = document.getElementById(id); if (m) m.classList.add('open') }
+  function closeM(id) { const m = document.getElementById(id); if (m) m.classList.remove('open') }
+
+  // ── Collision demo ────────────────────────────────────────────────────────
+  let demoRunning = false
+  function runDemo() {
+    if (demoRunning) return
+    demoRunning = true
+    const td = document.getElementById('td')
+    const tdc = document.getElementById('tdc')
+    const ct = document.getElementById('ct6')
+    const os = document.getElementById('ovs')
+
+    td.style.transition = 'none'; td.style.left = '37%'; td.style.top = '42%'
+    tdc.style.borderColor = 'var(--color-charcoal)'; tdc.style.background = 'var(--color-blush)'
+    ct.classList.remove('show'); os.textContent = '✓ No overlaps'; os.style.color = 'var(--color-sage)'
+
+    setTimeout(() => {
+      td.style.transition = 'left 0.55s ease-in-out, top 0.35s ease-in-out'
+      td.style.left = '49%'
+    }, 200)
+    setTimeout(() => {
+      tdc.style.borderColor = '#f59e0b'; tdc.style.background = '#fffbeb'
+      ct.classList.add('show'); os.textContent = '⚠ Overlap'; os.style.color = '#d97706'
+    }, 850)
+    setTimeout(() => {
+      td.style.transition = 'left 0.45s cubic-bezier(0.34,1.56,0.64,1), top 0.45s cubic-bezier(0.34,1.56,0.64,1)'
+      td.style.left = '37%'; td.style.top = '62%'
+    }, 1650)
+    setTimeout(() => {
+      tdc.style.borderColor = 'var(--color-sage)'; tdc.style.background = '#f0fdf4'
+      ct.classList.remove('show'); os.textContent = '✓ No overlaps'; os.style.color = 'var(--color-sage)'
+      demoRunning = false
+    }, 2300)
+  }
+</script>
+</body>
+</html>

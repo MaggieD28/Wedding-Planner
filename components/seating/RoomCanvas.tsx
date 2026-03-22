@@ -1,7 +1,8 @@
 "use client"
 
 import { useRef, useState, useCallback, useEffect } from "react"
-import { getTableSvgDims, getRoomHeight } from "@/lib/roomLayout"
+import { getTableSvgDims, getRoomHeight, detectOverlaps } from "@/lib/roomLayout"
+import type { DisplayTable } from "./TableCard"
 
 export type RoomTable = {
   id: string
@@ -25,6 +26,66 @@ type Props = {
   overlappingIds?: Set<string>
   onTableMove: (id: string, x: number, y: number) => void
   onTableRename?: (id: string, name: string) => Promise<void>
+  allTables?: { id: string; x: number | null; y: number | null; capacity: number; shape: string | null }[]
+  venueCapacity?: number
+  displayTables?: DisplayTable[]
+  avoidViolations?: Set<string>
+}
+
+function findFreePosition(
+  tableId: string,
+  proposed: { x: number; y: number },
+  allTables: Array<{ id: string; x: number | null; y: number | null; capacity: number; shape: string | null }>,
+  aspectRatio: number,
+  venueCapacity: number,
+  tableShape: string
+): { x: number; y: number } {
+  // Build a temp snapshot with the dragged table at the proposed position
+  const tempTables = allTables.map((t) =>
+    t.id === tableId
+      ? { ...t, x: proposed.x, y: proposed.y }
+      : t
+  )
+
+  // Call detectOverlaps — if tableId is NOT in the result, return proposed immediately
+  const overlapping = detectOverlaps(tempTables, aspectRatio, venueCapacity, tableShape)
+  if (!overlapping.has(tableId)) {
+    return proposed
+  }
+
+  // Otherwise, spiral outward: try offsets of [±5, ±10, ±15, ±20, ±25]% in x and y
+  const offsets = [5, 10, 15, 20, 25]
+  for (const offsetX of offsets) {
+    for (const offsetY of offsets) {
+      // Try all 4 directions
+      const candidates = [
+        { x: proposed.x + offsetX, y: proposed.y + offsetY },
+        { x: proposed.x + offsetX, y: proposed.y - offsetY },
+        { x: proposed.x - offsetX, y: proposed.y + offsetY },
+        { x: proposed.x - offsetX, y: proposed.y - offsetY },
+      ]
+
+      for (const candidate of candidates) {
+        const clamped = {
+          x: Math.max(5, Math.min(95, candidate.x)),
+          y: Math.max(5, Math.min(95, candidate.y)),
+        }
+        const testTables = allTables.map((t) =>
+          t.id === tableId ? { ...t, x: clamped.x, y: clamped.y } : t
+        )
+        const testOverlapping = detectOverlaps(testTables, aspectRatio, venueCapacity, tableShape)
+        if (!testOverlapping.has(tableId)) {
+          return clamped
+        }
+      }
+    }
+  }
+
+  // Return clamped proposed if no clear spot found
+  return {
+    x: Math.max(5, Math.min(95, proposed.x)),
+    y: Math.max(5, Math.min(95, proposed.y)),
+  }
 }
 
 function FlowerWatermark({ cx, cy }: { cx: number; cy: number }) {
@@ -54,7 +115,7 @@ function FlowerWatermark({ cx, cy }: { cx: number; cy: number }) {
   )
 }
 
-export default function RoomCanvas({ roomConfig, tables, overlappingIds, onTableMove, onTableRename }: Props) {
+export default function RoomCanvas({ roomConfig, tables, overlappingIds, onTableMove, onTableRename, allTables, venueCapacity, displayTables, avoidViolations }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -149,7 +210,12 @@ export default function RoomCanvas({ roomConfig, tables, overlappingIds, onTable
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!draggingId) return
     const pos = toPercentCoords(e.clientX, e.clientY)
-    onTableMove(draggingId, pos.x, pos.y)
+    const aspectRatio = roomConfig?.aspectRatio ?? 1.5
+    const tableShape = roomConfig?.tableShape ?? "CIRCLE"
+    const resolvedPos = allTables && venueCapacity !== undefined
+      ? findFreePosition(draggingId, pos, allTables, aspectRatio, venueCapacity, tableShape)
+      : pos
+    onTableMove(draggingId, resolvedPos.x, resolvedPos.y)
     setDraggingId(null)
     setDragPos(null)
   }
@@ -225,6 +291,10 @@ export default function RoomCanvas({ roomConfig, tables, overlappingIds, onTable
           const stroke = isOverlapping ? "#f59e0b" : "#B0C4B1"
           const strokeWidth = isOverlapping ? "1" : "0.5"
 
+          // Find the corresponding display table for seat data
+          const displayTable = displayTables?.find((dt) => dt.id === table.id)
+          const seats = displayTable?.seats ?? []
+
           return (
             <g
               key={table.id}
@@ -267,9 +337,145 @@ export default function RoomCanvas({ roomConfig, tables, overlappingIds, onTable
               >
                 {occupied}/{table.capacity}
               </text>
+
+              {/* Seat pins (guest names on colored dots) */}
+              {displayTable && seats.length > 0 && (
+                <g style={{ pointerEvents: "none" }}>
+                  {shape === "RECTANGLE" ? (
+                    // Rectangle table: seats along top and bottom edges
+                    (() => {
+                      const n = seats.length
+                      const topCount = Math.ceil(n / 2)
+                      const topSeats = seats.slice(0, topCount)
+                      const bottomSeats = seats.slice(topCount)
+                      const spacing = (rx * 2) / (topCount + 1)
+
+                      return (
+                        <>
+                          {/* Top seats */}
+                          {topSeats.map((seat, i) => {
+                            const sx = -rx + spacing * (i + 1)
+                            const sy = -ry - 1.4
+                            const guest = seat.guest
+                            const isConflict = avoidViolations?.has(seat.id) ?? false
+                            const dotColor = isConflict
+                              ? "#C0736A"
+                              : !guest
+                              ? "#DEDBD2"
+                              : guest.side === "BRIDE"
+                              ? "#EDAFB8"
+                              : "#B0C4B1"
+
+                            return (
+                              <g key={seat.id}>
+                                <circle cx={sx} cy={sy} r={0.35} fill={dotColor} />
+                                <text
+                                  x={sx}
+                                  y={sy - 0.6}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fontSize="0.4"
+                                  fontWeight="500"
+                                  fill="#4A5759"
+                                  style={{ userSelect: "none" }}
+                                >
+                                  {guest ? guest.name.split(" ")[0].slice(0, 8) : "—"}
+                                </text>
+                              </g>
+                            )
+                          })}
+                          {/* Bottom seats */}
+                          {bottomSeats.map((seat, i) => {
+                            const spacing = (rx * 2) / (bottomSeats.length + 1)
+                            const sx = -rx + spacing * (i + 1)
+                            const sy = ry + 1.4
+                            const guest = seat.guest
+                            const isConflict = avoidViolations?.has(seat.id) ?? false
+                            const dotColor = isConflict
+                              ? "#C0736A"
+                              : !guest
+                              ? "#DEDBD2"
+                              : guest.side === "BRIDE"
+                              ? "#EDAFB8"
+                              : "#B0C4B1"
+
+                            return (
+                              <g key={seat.id}>
+                                <circle cx={sx} cy={sy} r={0.35} fill={dotColor} />
+                                <text
+                                  x={sx}
+                                  y={sy + 0.6}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fontSize="0.4"
+                                  fontWeight="500"
+                                  fill="#4A5759"
+                                  style={{ userSelect: "none" }}
+                                >
+                                  {guest ? guest.name.split(" ")[0].slice(0, 8) : "—"}
+                                </text>
+                              </g>
+                            )
+                          })}
+                        </>
+                      )
+                    })()
+                  ) : (
+                    // Round table: seats radiating around
+                    seats.map((seat, i) => {
+                      const n = seats.length
+                      const angle = (2 * Math.PI * i) / n - Math.PI / 2
+                      const orbitRadius = rx + 1.8
+                      const sx = orbitRadius * Math.cos(angle)
+                      const sy = orbitRadius * Math.sin(angle)
+
+                      const guest = seat.guest
+                      const isConflict = avoidViolations?.has(seat.id) ?? false
+                      const dotColor = isConflict
+                        ? "#C0736A"
+                        : !guest
+                        ? "#DEDBD2"
+                        : guest.side === "BRIDE"
+                        ? "#EDAFB8"
+                        : "#B0C4B1"
+
+                      return (
+                        <g key={seat.id}>
+                          <circle cx={sx} cy={sy} r={0.35} fill={dotColor} />
+                          <text
+                            x={sx}
+                            y={sy + (sy < 0 ? -0.6 : 0.6)}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="0.4"
+                            fontWeight="500"
+                            fill="#4A5759"
+                            style={{ userSelect: "none" }}
+                          >
+                            {guest ? guest.name.split(" ")[0].slice(0, 8) : "—"}
+                          </text>
+                        </g>
+                      )
+                    })
+                  )}
+                </g>
+              )}
             </g>
           )
         })}
+
+        {/* Legend */}
+        <g style={{ pointerEvents: "none" }}>
+          <rect x="2" y="82" width="28" height="14" rx="2" fill="white" opacity="0.9" />
+          <circle cx="4" cy="86" r="0.4" fill="#EDAFB8" />
+          <text x="5.5" y="86.5" fontSize="0.65" fontWeight="500" fill="#4A5759" style={{ userSelect: "none" }}>Bride</text>
+          <circle cx="12" cy="86" r="0.4" fill="#B0C4B1" />
+          <text x="13.5" y="86.5" fontSize="0.65" fontWeight="500" fill="#4A5759" style={{ userSelect: "none" }}>Groom</text>
+          <circle cx="20" cy="86" r="0.4" fill="#DEDBD2" />
+          <text x="21.5" y="86.5" fontSize="0.65" fontWeight="500" fill="#4A5759" style={{ userSelect: "none" }}>Empty</text>
+          <circle cx="27" cy="86" r="0.4" fill="#C0736A" />
+          <text x="28.5" y="86.5" fontSize="0.65" fontWeight="500" fill="#4A5759" style={{ userSelect: "none" }}>Conflict</text>
+        </g>
       </svg>
 
       {/* Inline rename input overlay */}

@@ -47,8 +47,6 @@ interface Props {
   initialRoomConfig: RoomConfig | null
 }
 
-type Tab = "seating" | "room" | "tables"
-
 const ROOM_PRESETS = [
   { label: "Ballroom",     aspect_ratio: 1.5,  table_shape: "CIRCLE",    seats_per_table: 10, description: "Classic wedding ballroom · round tables" },
   { label: "Marquee",      aspect_ratio: 2.0,  table_shape: "CIRCLE",    seats_per_table: 10, description: "Wide outdoor tent · round tables" },
@@ -105,11 +103,12 @@ export default function SeatingClient({
   const [roomConfig, setRoomConfig] = useState<RoomConfig | null>(initialRoomConfig)
   const [groups, setGroups] = useState<Group[]>([])
   const [groupRules, setGroupRules] = useState<GroupRule[]>([])
-  const [tab, setTab] = useState<Tab>("seating")
-  const [seatingView, setSeatingView] = useState<"cards" | "diagrams">("cards")
   const [filter, setFilter] = useState("")
   const [activeGuest, setActiveGuest] = useState<SeatingGuest | null>(null)
   const [showConstraints, setShowConstraints] = useState(false)
+  const [showRoomSetup, setShowRoomSetup] = useState(false)
+  const [showCanvas, setShowCanvas] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showNameModal, setShowNameModal] = useState(false)
   const [autoAssigning, setAutoAssigning] = useState(false)
   const [autoAssignResult, setAutoAssignResult] = useState<{ assigned: number; skipped: string[] } | null>(null)
@@ -686,6 +685,26 @@ export default function SeatingClient({
             Constraints ({constraints.length})
           </button>
           <button
+            onClick={() => setShowRoomSetup(true)}
+            className="border rounded-lg px-3 py-2 text-sm transition-colors hover:bg-stone-100"
+            style={{ borderColor: "var(--color-stone)", color: "var(--color-subtle)" }}
+            title="Room Setup"
+          >
+            ⚙
+          </button>
+          <button
+            onClick={() => setShowCanvas((v) => !v)}
+            className="border rounded-lg px-3 py-2 text-sm transition-colors hover:bg-stone-100"
+            style={{
+              borderColor: showCanvas ? "var(--color-charcoal)" : "var(--color-stone)",
+              background: showCanvas ? "var(--color-charcoal)" : "white",
+              color: showCanvas ? "white" : "var(--color-subtle)",
+            }}
+            title={showCanvas ? "Hide room canvas" : "Show room canvas"}
+          >
+            ⊞
+          </button>
+          <button
             onClick={() => window.print()}
             className="border rounded-lg px-4 py-2 text-sm transition-colors hover:bg-stone-100 print:hidden"
             style={{ borderColor: "var(--color-stone)", color: "var(--color-subtle)" }}
@@ -718,54 +737,65 @@ export default function SeatingClient({
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b" style={{ borderColor: "var(--color-stone)" }}>
-        {(["seating", "room", "tables"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="px-4 py-2 text-sm font-medium capitalize -mb-px border-b-2 transition-colors"
-            style={{
-              borderBottomColor: tab === t ? "var(--color-charcoal)" : "transparent",
-              color: tab === t ? "var(--color-charcoal)" : "var(--color-subtle)",
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Seating tab */}
-      {tab === "seating" && (
+      {/* Seating content */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex justify-end mb-3">
+          {/* Canvas panel (collapsible) */}
+          {showCanvas && (
             <div
-              className="flex rounded-lg border overflow-hidden text-xs"
-              style={{ borderColor: "var(--color-stone)" }}
+              className="border-b mb-4"
+              style={{
+                height: "340px",
+                borderColor: "var(--color-stone)",
+                transition: "height 0.25s ease",
+              }}
             >
-              {(["cards", "diagrams"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setSeatingView(v)}
-                  className="px-3 py-1.5 capitalize transition-colors"
-                  style={{
-                    background: seatingView === v ? "var(--color-charcoal)" : "white",
-                    color: seatingView === v ? "white" : "var(--color-subtle)",
-                  }}
-                >
-                  {v}
-                </button>
-              ))}
+              <RoomCanvas
+                roomConfig={{
+                  aspectRatio: roomConfig?.aspect_ratio ?? 1.5,
+                  tableShape: roomConfig?.table_shape ?? "CIRCLE",
+                  venueCapacity: Math.max(venueCapacity, 10),
+                }}
+                tables={tables.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  capacity: t.capacity,
+                  x: t.x,
+                  y: t.y,
+                  shape: t.shape,
+                  seats: t.seats.map((s) => ({ id: s.id, guest_id: s.guest_id })),
+                }))}
+                overlappingIds={overlappingTableIds}
+                onTableMove={handleTableMove}
+                onTableRename={(id, name) => handleRenameTable(id, name)}
+                allTables={tables.map(t => ({ id: t.id, x: t.x, y: t.y, capacity: t.capacity, shape: t.shape }))}
+                venueCapacity={venueCapacity}
+                displayTables={displayTables}
+                avoidViolations={avoidViolations}
+              />
             </div>
-          </div>
+          )}
 
           <div className="flex gap-4 items-start">
             {/* Sidebar */}
             <div
-              className="w-64 flex-shrink-0 rounded-xl shadow-sm border p-4 sticky top-6 self-start max-h-[90vh] overflow-y-auto"
+              className={`flex-shrink-0 rounded-xl shadow-sm border sticky top-6 self-start max-h-[90vh] overflow-y-auto transition-all duration-200 ${sidebarOpen ? "w-64 p-4" : "w-10"}`}
               style={{ background: "var(--color-blush)", borderColor: "var(--color-stone)" }}
             >
-              {/* Couple cards */}
+              {sidebarOpen ? (
+                <>
+                  {/* Sidebar close button */}
+                  <div className="flex justify-end mb-3">
+                    <button
+                      onClick={() => setSidebarOpen(false)}
+                      className="text-sm px-2 py-1 rounded hover:bg-stone-200 transition-colors"
+                      style={{ color: "var(--color-subtle)" }}
+                      title="Collapse sidebar"
+                    >
+                      ‹
+                    </button>
+                  </div>
+
+                  {/* Couple cards */}
               <div className="mb-3 space-y-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wide px-1" style={{ color: "var(--color-subtle)" }}>
                   The Couple
@@ -813,19 +843,29 @@ export default function SeatingClient({
                 onDeleteGroup={handleDeleteGroup}
                 onAssignGroup={handleAssignGroup}
               />
+                </>
+              ) : (
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="w-full h-full flex items-center justify-center text-sm transition-colors"
+                  style={{ color: "var(--color-subtle)" }}
+                  title="Expand sidebar"
+                >
+                  ›
+                </button>
+              )}
             </div>
 
-            {/* Table grid */}
+            {/* Table grid - always cards */}
             <div className="flex-1 overflow-y-auto">
               {displayTables.length === 0 ? (
                 <div
-                  className="flex items-center justify-center h-full text-sm cursor-pointer"
+                  className="flex items-center justify-center h-full text-sm"
                   style={{ color: "var(--color-subtle)" }}
-                  onClick={() => setTab("tables")}
                 >
-                  No tables yet. Click to add tables.
+                  No tables yet. Add tables in the Setup menu.
                 </div>
-              ) : seatingView === "cards" ? (
+              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {displayTables.map((table) => (
                     <TableCard
@@ -844,33 +884,6 @@ export default function SeatingClient({
                     />
                   ))}
                 </div>
-              ) : (
-                <div
-                  ref={diagramRef}
-                  className="relative w-full rounded-xl border overflow-auto"
-                  style={{
-                    aspectRatio: roomConfig?.aspect_ratio ?? 1.5,
-                    background: "#FAF6F0",
-                    borderColor: "var(--color-stone)",
-                  }}
-                >
-                  {displayTables.map((table) => {
-                    const pos = diagramPositions[table.id] ?? { x: 50, y: 50 }
-                    return (
-                      <TableDiagram
-                        key={table.id}
-                        table={table}
-                        effectiveShape={(table.shape ?? roomConfig?.table_shape ?? "CIRCLE") as "CIRCLE" | "OVAL" | "RECTANGLE"}
-                        x={pos.x}
-                        y={pos.y}
-                        avoidViolations={avoidViolations}
-                        preferWarnings={preferWarnings}
-                        onUnassignGuest={handleUnassignGuest}
-                        onClearTable={handleClearTable}
-                      />
-                    )
-                  })}
-                </div>
               )}
             </div>
           </div>
@@ -879,312 +892,297 @@ export default function SeatingClient({
             {activeGuest ? <GuestCard guest={activeGuest} /> : null}
           </DragOverlay>
         </DndContext>
-      )}
 
-      {/* Room tab */}
-      {tab === "room" && (
-        <div>
+      {/* Setup modal (room config + table management) */}
+      {showRoomSetup && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40 p-4">
           <div
-            className="flex flex-wrap items-center gap-4 mb-4 p-3 rounded-xl border text-sm"
-            style={{ borderColor: "var(--color-stone)", background: "var(--color-blush)" }}
+            className="bg-white rounded-xl shadow-lg max-w-lg overflow-y-auto max-h-[85vh] relative"
+            style={{ borderColor: "var(--color-stone)" }}
           >
-            <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
-              <span className="text-xs font-medium">Venue preset</span>
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  const preset = ROOM_PRESETS.find((p) => p.label === e.target.value)
-                  if (preset) handleRoomConfigChange({
-                    aspect_ratio: preset.aspect_ratio,
-                    table_shape: preset.table_shape as RoomConfig["table_shape"],
-                    seats_per_table: preset.seats_per_table,
-                  })
-                  e.target.value = ""
-                }}
-                className="border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2"
-                style={{ borderColor: "var(--color-stone)" }}
-              >
-                <option value="" disabled>Choose…</option>
-                {ROOM_PRESETS.map((p) => (
-                  <option key={p.label} value={p.label} title={p.description}>{p.label}</option>
-                ))}
-              </select>
-            </label>
+            {/* Close button */}
+            <button
+              onClick={() => setShowRoomSetup(false)}
+              className="absolute top-4 right-4 text-xl"
+              style={{ color: "var(--color-subtle)" }}
+              title="Close"
+            >
+              ×
+            </button>
 
-            {(() => {
-              const ratio = roomConfig?.aspect_ratio ?? 1.5
-              const isLandscape = ratio >= 1
-              const baseRatio = isLandscape ? ratio : 1 / ratio
-              return (
-                <>
-                  <div
-                    className="flex rounded-lg border overflow-hidden text-xs"
-                    style={{ borderColor: "var(--color-stone)" }}
-                  >
-                    {([["landscape", "⬛ Landscape"], ["portrait", "🟦 Portrait"]] as const).map(([val, label]) => {
-                      const active = val === "landscape" ? isLandscape : !isLandscape
-                      return (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => {
-                            if ((val === "landscape") !== isLandscape) {
-                              handleRoomConfigChange({ aspect_ratio: 1 / ratio })
-                            }
-                          }}
-                          className="px-3 py-1.5 transition-colors"
-                          style={{
-                            background: active ? "var(--color-charcoal)" : "white",
-                            color: active ? "white" : "var(--color-subtle)",
-                          }}
-                        >
-                          {label}
-                        </button>
-                      )
-                    })}
-                  </div>
+            <div className="p-6">
+              {/* Section 1: Venue & Room Configuration */}
+              <div className="mb-6">
+                <h3
+                  className="text-lg font-semibold mb-4"
+                  style={{ color: "var(--color-charcoal)" }}
+                >
+                  Venue & Room Configuration
+                </h3>
 
+                <div className="space-y-4">
                   <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
-                    <span className="text-xs font-medium">Ratio</span>
+                    <span className="text-xs font-medium">Venue preset</span>
                     <select
-                      value={baseRatio}
+                      defaultValue=""
                       onChange={(e) => {
-                        const base = Number(e.target.value)
-                        handleRoomConfigChange({ aspect_ratio: isLandscape ? base : 1 / base })
+                        const preset = ROOM_PRESETS.find((p) => p.label === e.target.value)
+                        if (preset) handleRoomConfigChange({
+                          aspect_ratio: preset.aspect_ratio,
+                          table_shape: preset.table_shape as RoomConfig["table_shape"],
+                          seats_per_table: preset.seats_per_table,
+                        })
+                        e.target.value = ""
                       }}
                       className="border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2"
                       style={{ borderColor: "var(--color-stone)" }}
                     >
-                      <option value={1.33}>4:3</option>
-                      <option value={1.5}>3:2</option>
-                      <option value={1.78}>16:9</option>
-                      <option value={2.0}>2:1</option>
+                      <option value="" disabled>Choose…</option>
+                      {ROOM_PRESETS.map((p) => (
+                        <option key={p.label} value={p.label} title={p.description}>{p.label}</option>
+                      ))}
                     </select>
                   </label>
-                </>
-              )
-            })()}
 
-            <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
-              <span className="text-xs font-medium">Default shape</span>
-              <select
-                value={roomConfig?.table_shape ?? "CIRCLE"}
-                onChange={(e) => handleRoomConfigChange({ table_shape: e.target.value as RoomConfig["table_shape"] })}
-                className="border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2"
-                style={{ borderColor: "var(--color-stone)" }}
-              >
-                <option value="CIRCLE">Circle</option>
-                <option value="OVAL">Oval</option>
-                <option value="RECTANGLE">Rectangle</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
-              <span className="text-xs font-medium">Default seats</span>
-              <input
-                type="number"
-                min={2}
-                max={30}
-                value={roomConfig?.seats_per_table ?? 10}
-                onChange={(e) => handleRoomConfigChange({ seats_per_table: Number(e.target.value) })}
-                className="w-16 border rounded px-2 py-1 text-xs bg-white text-center focus:outline-none focus:ring-2"
-                style={{ borderColor: "var(--color-stone)" }}
-              />
-            </label>
-            <div className="ml-auto flex items-center gap-2">
-              {overlappingTableIds.size > 0 && (
-                <span className="text-xs font-medium px-2 py-1 rounded-lg bg-amber-50 border border-amber-300 text-amber-700">
-                  ⚠ {overlappingTableIds.size} tables overlapping
-                </span>
-              )}
-              <button
-                onClick={handleAutoLayout}
-                className="border rounded-lg px-4 py-1.5 text-xs font-medium transition-colors hover:bg-stone-100"
-                style={{
-                  borderColor: overlappingTableIds.size > 0 ? "#f59e0b" : "var(--color-stone)",
-                  color: overlappingTableIds.size > 0 ? "#b45309" : "var(--color-subtle)",
-                  background: overlappingTableIds.size > 0 ? "#fffbeb" : undefined,
-                }}
-              >
-                Auto Fit
-              </button>
-            </div>
-          </div>
-          {tables.length === 0 ? (
-            <p className="text-sm text-center py-12" style={{ color: "var(--color-subtle)" }}>
-              No tables yet. Add tables first.
-            </p>
-          ) : (
-            <div
-              className="rounded-xl overflow-hidden border shadow-sm"
-              style={{ borderColor: "var(--color-stone)" }}
-            >
-              <RoomCanvas
-                roomConfig={{
-                  aspectRatio: roomConfig?.aspect_ratio ?? 1.5,
-                  tableShape: roomConfig?.table_shape ?? "CIRCLE",
-                  venueCapacity: Math.max(venueCapacity, 10),
-                }}
-                tables={tables.map((t) => ({
-                  id: t.id,
-                  name: t.name,
-                  capacity: t.capacity,
-                  x: t.x,
-                  y: t.y,
-                  shape: t.shape,
-                  seats: t.seats.map((s) => ({ id: s.id, guest_id: s.guest_id })),
-                }))}
-                overlappingIds={overlappingTableIds}
-                onTableMove={handleTableMove}
-                onTableRename={(id, name) => handleRenameTable(id, name)}
-              />
-            </div>
-          )}
-        </div>
-      )}
+                  {(() => {
+                    const ratio = roomConfig?.aspect_ratio ?? 1.5
+                    const isLandscape = ratio >= 1
+                    const baseRatio = isLandscape ? ratio : 1 / ratio
+                    return (
+                      <>
+                        <div
+                          className="flex rounded-lg border overflow-hidden text-xs"
+                          style={{ borderColor: "var(--color-stone)" }}
+                        >
+                          {([["landscape", "⬛ Landscape"], ["portrait", "🟦 Portrait"]] as const).map(([val, label]) => {
+                            const active = val === "landscape" ? isLandscape : !isLandscape
+                            return (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => {
+                                  if ((val === "landscape") !== isLandscape) {
+                                    handleRoomConfigChange({ aspect_ratio: 1 / ratio })
+                                  }
+                                }}
+                                className="flex-1 px-3 py-1.5 transition-colors"
+                                style={{
+                                  background: active ? "var(--color-charcoal)" : "white",
+                                  color: active ? "white" : "var(--color-subtle)",
+                                }}
+                              >
+                                {label}
+                              </button>
+                            )
+                          })}
+                        </div>
 
-      {/* Tables management tab */}
-      {tab === "tables" && (
-        <div className="max-w-2xl">
-          <div className="flex justify-end mb-3">
-            <button
-              onClick={() => setShowNameModal(true)}
-              disabled={tables.length === 0}
-              className="border rounded-lg px-4 py-2 text-sm transition-colors hover:bg-stone-50 disabled:opacity-40"
-              style={{ borderColor: "var(--color-stone)", color: "var(--color-charcoal)" }}
-            >
-              ✦ Name by theme…
-            </button>
-          </div>
+                        <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
+                          <span className="text-xs font-medium">Ratio</span>
+                          <select
+                            value={baseRatio}
+                            onChange={(e) => {
+                              const base = Number(e.target.value)
+                              handleRoomConfigChange({ aspect_ratio: isLandscape ? base : 1 / base })
+                            }}
+                            className="border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2"
+                            style={{ borderColor: "var(--color-stone)" }}
+                          >
+                            <option value={1.33}>4:3</option>
+                            <option value={1.5}>3:2</option>
+                            <option value={1.78}>16:9</option>
+                            <option value={2.0}>2:1</option>
+                          </select>
+                        </label>
+                      </>
+                    )
+                  })()}
 
-          <form
-            onSubmit={handleAddTable}
-            className="flex gap-3 mb-6 p-4 rounded-xl border"
-            style={{ borderColor: "var(--color-stone)", background: "var(--color-blush)" }}
-          >
-            <input
-              type="text"
-              placeholder="Table name…"
-              value={newTableName}
-              onChange={(e) => setNewTableName(e.target.value)}
-              className="flex-1 border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2"
-              style={{ borderColor: "var(--color-stone)" }}
-              required
-            />
-            <select
-              value={newTableShape}
-              onChange={(e) => setNewTableShape(e.target.value as RoomConfig["table_shape"])}
-              className="border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2"
-              style={{ borderColor: "var(--color-stone)" }}
-              title="Shape"
-            >
-              <option value="CIRCLE">Circle</option>
-              <option value="OVAL">Oval</option>
-              <option value="RECTANGLE">Rectangle</option>
-            </select>
-            <input
-              type="number"
-              min={2}
-              max={30}
-              value={newTableCapacity}
-              onChange={(e) => setNewTableCapacity(Number(e.target.value))}
-              className="w-20 border rounded-lg px-3 py-2 text-sm bg-white text-center focus:outline-none focus:ring-2"
-              style={{ borderColor: "var(--color-stone)" }}
-              title="Capacity"
-            />
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={newTableCount}
-              onChange={(e) => setNewTableCount(Number(e.target.value))}
-              className="w-16 border rounded-lg px-3 py-2 text-sm bg-white text-center focus:outline-none focus:ring-2"
-              style={{ borderColor: "var(--color-stone)" }}
-              title="How many tables"
-            />
-            <label className="flex items-center gap-1.5 text-sm whitespace-nowrap" style={{ color: "var(--color-charcoal)" }}>
-              <input
-                type="checkbox"
-                checked={newTableIsHead}
-                onChange={(e) => setNewTableIsHead(e.target.checked)}
-                className="rounded"
-              />
-              Head table
-            </label>
-            <button
-              type="submit"
-              disabled={addingTable}
-              className="text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-              style={{ background: "var(--color-charcoal)" }}
-            >
-              {addingTable ? "Adding…" : newTableCount > 1 ? `Add ${newTableCount} Tables` : "Add Table"}
-            </button>
-          </form>
+                  <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
+                    <span className="text-xs font-medium">Default shape</span>
+                    <select
+                      value={roomConfig?.table_shape ?? "CIRCLE"}
+                      onChange={(e) => handleRoomConfigChange({ table_shape: e.target.value as RoomConfig["table_shape"] })}
+                      className="border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2"
+                      style={{ borderColor: "var(--color-stone)" }}
+                    >
+                      <option value="CIRCLE">Circle</option>
+                      <option value="OVAL">Oval</option>
+                      <option value="RECTANGLE">Rectangle</option>
+                    </select>
+                  </label>
 
-          <div className="space-y-2">
-            {tables.length === 0 && (
-              <p className="text-sm text-center py-8" style={{ color: "var(--color-subtle)" }}>
-                No tables yet. Add your first table above.
-              </p>
-            )}
-            {tables.map((t) => {
-              const occupied = t.seats.filter((s) => s.guest_id).length
-              return (
-                <div
-                  key={t.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-white"
-                  style={{ borderColor: "var(--color-stone)" }}
+                  <label className="flex items-center gap-2" style={{ color: "var(--color-charcoal)" }}>
+                    <span className="text-xs font-medium">Default seats</span>
+                    <input
+                      type="number"
+                      min={2}
+                      max={30}
+                      value={roomConfig?.seats_per_table ?? 10}
+                      onChange={(e) => handleRoomConfigChange({ seats_per_table: Number(e.target.value) })}
+                      className="w-16 border rounded px-2 py-1 text-xs bg-white text-center focus:outline-none focus:ring-2"
+                      style={{ borderColor: "var(--color-stone)" }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Section 2: Manage Tables */}
+              <div className="border-t pt-6" style={{ borderColor: "var(--color-stone)" }}>
+                <h3
+                  className="text-lg font-semibold mb-4"
+                  style={{ color: "var(--color-charcoal)" }}
                 >
-                  <div className="flex items-center gap-3">
-                    {editingTableId === t.id ? (
-                      <input
-                        autoFocus
-                        value={editingTableName}
-                        onChange={(e) => setEditingTableName(e.target.value)}
-                        onBlur={() => handleRenameTable(t.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleRenameTable(t.id)
-                          if (e.key === "Escape") setEditingTableId(null)
-                        }}
-                        className="font-medium text-sm border-b focus:outline-none w-32"
-                        style={{ borderColor: "var(--color-charcoal)", color: "var(--color-charcoal)" }}
-                      />
-                    ) : (
-                      <button
-                        className="font-medium text-sm hover:underline text-left"
-                        style={{ color: "var(--color-charcoal)" }}
-                        onClick={() => { setEditingTableId(t.id); setEditingTableName(t.name) }}
-                        title="Click to rename"
-                      >
-                        {t.name}
-                      </button>
-                    )}
-                    {t.is_head_table && (
-                      <span
-                        className="text-xs px-1.5 py-0.5 rounded-full text-white"
-                        style={{ background: "var(--color-pink)" }}
-                      >
-                        Head
-                      </span>
-                    )}
-                    <span className="text-xs" style={{ color: "var(--color-subtle)" }}>
-                      {occupied}/{t.capacity} seats
-                    </span>
-                  </div>
+                  Manage Tables
+                </h3>
+
+                <div className="mb-4 flex justify-end">
                   <button
-                    onClick={() => handleDeleteTable(t.id)}
-                    className="text-sm px-3 py-1 rounded-lg border transition-colors hover:bg-red-50"
-                    style={{ color: "var(--color-warm-red)", borderColor: "var(--color-stone)" }}
+                    onClick={() => setShowNameModal(true)}
+                    disabled={tables.length === 0}
+                    className="border rounded-lg px-4 py-2 text-sm transition-colors hover:bg-stone-50 disabled:opacity-40"
+                    style={{ borderColor: "var(--color-stone)", color: "var(--color-charcoal)" }}
                   >
-                    Delete
+                    ✦ Name by theme…
                   </button>
                 </div>
-              )
-            })}
-          </div>
 
-          <p className="text-xs mt-4" style={{ color: "var(--color-subtle)" }}>
-            {tables.length} table{tables.length !== 1 ? "s" : ""} · {venueCapacity} total seats
-          </p>
+                <form
+                  onSubmit={handleAddTable}
+                  className="flex flex-col gap-2 mb-4 p-3 rounded-lg border"
+                  style={{ borderColor: "var(--color-stone)", background: "var(--color-blush)" }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Table name…"
+                    value={newTableName}
+                    onChange={(e) => setNewTableName(e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2"
+                    style={{ borderColor: "var(--color-stone)" }}
+                    required
+                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={newTableShape}
+                      onChange={(e) => setNewTableShape(e.target.value as RoomConfig["table_shape"])}
+                      className="border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2"
+                      style={{ borderColor: "var(--color-stone)" }}
+                      title="Shape"
+                    >
+                      <option value="CIRCLE">Circle</option>
+                      <option value="OVAL">Oval</option>
+                      <option value="RECTANGLE">Rectangle</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={2}
+                      max={30}
+                      value={newTableCapacity}
+                      onChange={(e) => setNewTableCapacity(Number(e.target.value))}
+                      className="w-20 border rounded-lg px-3 py-2 text-sm bg-white text-center focus:outline-none focus:ring-2"
+                      style={{ borderColor: "var(--color-stone)" }}
+                      title="Capacity"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={newTableCount}
+                      onChange={(e) => setNewTableCount(Number(e.target.value))}
+                      className="w-16 border rounded-lg px-3 py-2 text-sm bg-white text-center focus:outline-none focus:ring-2"
+                      style={{ borderColor: "var(--color-stone)" }}
+                      title="How many tables"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-sm" style={{ color: "var(--color-charcoal)" }}>
+                      <input
+                        type="checkbox"
+                        checked={newTableIsHead}
+                        onChange={(e) => setNewTableIsHead(e.target.checked)}
+                        className="rounded"
+                      />
+                      Head table
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={addingTable}
+                      className="text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50 ml-auto"
+                      style={{ background: "var(--color-charcoal)" }}
+                    >
+                      {addingTable ? "Adding…" : newTableCount > 1 ? `Add ${newTableCount}` : "Add Table"}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="space-y-2">
+                  {tables.length === 0 && (
+                    <p className="text-sm text-center py-4" style={{ color: "var(--color-subtle)" }}>
+                      No tables yet. Add your first table above.
+                    </p>
+                  )}
+                  {tables.map((t) => {
+                    const occupied = t.seats.filter((s) => s.guest_id).length
+                    return (
+                      <div
+                        key={t.id}
+                        className="flex items-center justify-between p-3 rounded-lg border bg-white text-sm"
+                        style={{ borderColor: "var(--color-stone)" }}
+                      >
+                        <div className="flex items-center gap-2 flex-1">
+                          {editingTableId === t.id ? (
+                            <input
+                              autoFocus
+                              value={editingTableName}
+                              onChange={(e) => setEditingTableName(e.target.value)}
+                              onBlur={() => handleRenameTable(t.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleRenameTable(t.id)
+                                if (e.key === "Escape") setEditingTableId(null)
+                              }}
+                              className="font-medium text-sm border-b focus:outline-none flex-1"
+                              style={{ borderColor: "var(--color-charcoal)", color: "var(--color-charcoal)" }}
+                            />
+                          ) : (
+                            <button
+                              className="font-medium text-sm hover:underline text-left flex-1"
+                              style={{ color: "var(--color-charcoal)" }}
+                              onClick={() => { setEditingTableId(t.id); setEditingTableName(t.name) }}
+                              title="Click to rename"
+                            >
+                              {t.name}
+                            </button>
+                          )}
+                          {t.is_head_table && (
+                            <span
+                              className="text-xs px-1.5 py-0.5 rounded-full text-white"
+                              style={{ background: "var(--color-pink)" }}
+                            >
+                              Head
+                            </span>
+                          )}
+                          <span className="text-xs" style={{ color: "var(--color-subtle)" }}>
+                            {occupied}/{t.capacity}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteTable(t.id)}
+                          className="text-xs px-3 py-1 rounded-lg border transition-colors hover:bg-red-50"
+                          style={{ color: "var(--color-warm-red)", borderColor: "var(--color-stone)" }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <p className="text-xs mt-4" style={{ color: "var(--color-subtle)" }}>
+                  {tables.length} table{tables.length !== 1 ? "s" : ""} · {venueCapacity} total seats
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
