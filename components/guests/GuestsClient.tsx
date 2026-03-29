@@ -60,7 +60,7 @@ export default function GuestsClient({ initialGuests }: Props) {
 
   // Manual match
   const [matchTarget, setMatchTarget] = useState<UnmatchedRsvp | null>(null)
-  const [matchGuestId, setMatchGuestId] = useState("")
+  const [matchGuestIds, setMatchGuestIds] = useState<string[]>([])
   const [matchSearch, setMatchSearch] = useState("")
   const [matching, setMatching] = useState(false)
 
@@ -159,24 +159,24 @@ export default function GuestsClient({ initialGuests }: Props) {
   }
 
   async function handleMatch() {
-    if (!matchTarget || !matchGuestId) return
+    if (!matchTarget || matchGuestIds.length === 0) return
     setMatching(true)
     const res = await fetch("/api/sync-rsvps/match", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ guestId: matchGuestId, rsvp: matchTarget }),
+      body: JSON.stringify({ guestIds: matchGuestIds, rsvp: matchTarget }),
     })
     if (res.ok) {
       setSyncResult(prev => prev ? {
         ...prev,
         unmatched: prev.unmatched.filter(u => u !== matchTarget),
-        synced: prev.synced + 1,
+        synced: prev.synced + matchGuestIds.length,
       } : prev)
-      // Guest update comes via realtime channel automatically
+      // Guest updates come via realtime channel automatically
     }
     setMatching(false)
     setMatchTarget(null)
-    setMatchGuestId("")
+    setMatchGuestIds([])
     setMatchSearch("")
   }
 
@@ -338,7 +338,7 @@ export default function GuestsClient({ initialGuests }: Props) {
                     </span>
                     {u.dietary_requirements && <span> · {u.dietary_requirements}</span>}
                   </span>
-                  <button onClick={() => { setMatchTarget(u); setMatchGuestId(""); setMatchSearch("") }}
+                  <button onClick={() => { setMatchTarget(u); setMatchGuestIds([]); setMatchSearch("") }}
                     className="ml-3 px-2 py-1 rounded text-xs border"
                     style={{ borderColor: "#b45309", color: "#b45309" }}>
                     Match
@@ -402,7 +402,7 @@ export default function GuestsClient({ initialGuests }: Props) {
                     {g.save_the_date_sent ? "✓" : "–"}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: g.invite_sent ? "var(--color-sage)" : "var(--color-sage-light)" }}>
-                    {g.invite_sent ? "Yes" : "–"}
+                    {g.invite_sent ? "✓" : "–"}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>{g.dietary_requirement || "–"}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: "var(--color-subtle)" }}>
@@ -492,7 +492,7 @@ export default function GuestsClient({ initialGuests }: Props) {
               <h2 className="text-2xl font-medium" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
                 Match RSVP to Guest
               </h2>
-              <button onClick={() => { setMatchTarget(null); setMatchGuestId(""); setMatchSearch("") }}>
+              <button onClick={() => { setMatchTarget(null); setMatchGuestIds([]); setMatchSearch("") }}>
                 <X size={20} style={{ color: "var(--color-subtle)" }} />
               </button>
             </div>
@@ -525,7 +525,10 @@ export default function GuestsClient({ initialGuests }: Props) {
 
               {/* Right: guest search */}
               <div className="flex-1 p-5 flex flex-col gap-3">
-                <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-subtle)" }}>Select guest record</p>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-subtle)" }}>Select guest record(s)</p>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--color-subtle)" }}>Select one or more guests — 1st gets primary dietary, 2nd gets +1 dietary</p>
+                </div>
                 <div className="relative">
                   <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-subtle)" }} />
                   <input
@@ -537,20 +540,33 @@ export default function GuestsClient({ initialGuests }: Props) {
                   />
                 </div>
                 <div className="overflow-y-auto max-h-48 flex flex-col gap-1">
-                  {matchFilteredGuests.map(g => (
-                    <button
-                      key={g.id}
-                      onClick={() => setMatchGuestId(g.id)}
-                      className="text-left px-3 py-2 rounded-lg text-sm transition-colors"
-                      style={{
-                        backgroundColor: matchGuestId === g.id ? "var(--color-sage-light)" : "transparent",
-                        color: "var(--color-charcoal)",
-                      }}
-                    >
-                      <span className="font-medium">{g.first_name} {g.last_name ?? ""}</span>
-                      {g.email && <span className="ml-2 text-xs" style={{ color: "var(--color-subtle)" }}>{g.email}</span>}
-                    </button>
-                  ))}
+                  {matchFilteredGuests.map(g => {
+                    const idx = matchGuestIds.indexOf(g.id)
+                    const isSelected = idx !== -1
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => setMatchGuestIds(prev =>
+                          prev.includes(g.id) ? prev.filter(id => id !== g.id) : [...prev, g.id]
+                        )}
+                        className="text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between"
+                        style={{
+                          backgroundColor: isSelected ? "var(--color-sage-light)" : "transparent",
+                          color: "var(--color-charcoal)",
+                        }}
+                      >
+                        <span>
+                          <span className="font-medium">{g.first_name} {g.last_name ?? ""}</span>
+                          {g.email && <span className="ml-2 text-xs" style={{ color: "var(--color-subtle)" }}>{g.email}</span>}
+                        </span>
+                        {isSelected && (
+                          <span className="text-xs ml-2 shrink-0" style={{ color: "var(--color-sage)" }}>
+                            {idx === 0 ? "✓ primary" : idx === 1 ? "✓ +1" : `✓ #${idx + 1}`}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
                   {matchFilteredGuests.length === 0 && (
                     <p className="text-xs py-2 text-center" style={{ color: "var(--color-subtle)" }}>No guests match.</p>
                   )}
@@ -560,7 +576,7 @@ export default function GuestsClient({ initialGuests }: Props) {
 
             <div className="flex justify-end gap-3 px-6 py-4 border-t" style={{ borderColor: "var(--color-sage-light)" }}>
               <button
-                onClick={() => { setMatchTarget(null); setMatchGuestId(""); setMatchSearch("") }}
+                onClick={() => { setMatchTarget(null); setMatchGuestIds([]); setMatchSearch("") }}
                 className="px-5 py-2.5 rounded-xl text-sm"
                 style={{ color: "var(--color-subtle)" }}
               >
@@ -568,11 +584,11 @@ export default function GuestsClient({ initialGuests }: Props) {
               </button>
               <button
                 onClick={handleMatch}
-                disabled={!matchGuestId || matching}
+                disabled={matchGuestIds.length === 0 || matching}
                 className="px-5 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40"
                 style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}
               >
-                {matching ? "Applying…" : "Apply RSVP"}
+                {matching ? "Applying…" : matchGuestIds.length > 1 ? `Apply RSVP to ${matchGuestIds.length} guests` : "Apply RSVP"}
               </button>
             </div>
           </div>
