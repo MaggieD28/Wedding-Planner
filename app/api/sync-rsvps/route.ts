@@ -69,6 +69,13 @@ export async function POST() {
       )
     }
 
+    // Fallback: full RSVP name was stored entirely in first_name (e.g. auto-created plus-ones)
+    if (!matched && rsvp.name) {
+      matched = existingGuests.find(
+        g => g.first_name.toLowerCase() === rsvp.name.trim().toLowerCase() && !g.last_name
+      )
+    }
+
     if (!matched) {
       unmatched.push(rsvp)
       continue
