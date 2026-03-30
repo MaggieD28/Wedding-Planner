@@ -69,10 +69,22 @@ export async function POST() {
       )
     }
 
+    // Fallback: full RSVP name was stored entirely in first_name (e.g. auto-created plus-ones)
+    if (!matched && rsvp.name) {
+      matched = existingGuests.find(
+        g => g.first_name.toLowerCase() === rsvp.name.trim().toLowerCase() && !g.last_name
+      )
+    }
+
     if (!matched) {
       unmatched.push(rsvp)
       continue
     }
+
+    // Parse name from RSVP to update guest record
+    const nameParts = rsvp.name.trim().split(" ")
+    const rsvpFirstName = nameParts[0]
+    const rsvpLastName = nameParts.slice(1).join(" ") || null
 
     // Build children_dietary string from children array
     const childrenDietary = (rsvp.children ?? [])
@@ -80,10 +92,12 @@ export async function POST() {
       .filter(Boolean)
       .join(", ") || null
 
-    // Update main guest
+    // Update main guest (including name from RSVP)
     await supabase
       .from("guests")
       .update({
+        first_name: rsvpFirstName,
+        last_name: rsvpLastName,
         rsvp_status: rsvp.attending ? "Accepted" : "Declined",
         dietary_requirement: normalizeDietary(rsvp.dietary_requirements),
         children_count: rsvp.children?.length ?? 0,
@@ -112,6 +126,8 @@ export async function POST() {
         await supabase
           .from("guests")
           .update({
+            first_name: plusFirst,
+            last_name: plusLast || null,
             rsvp_status: "Accepted",
             dietary_requirement: normalizeDietary(rsvp.plus_one_dietary),
             rsvp_date: rsvp.created_at ? rsvp.created_at.split("T")[0] : null,
