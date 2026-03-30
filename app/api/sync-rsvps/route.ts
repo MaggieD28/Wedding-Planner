@@ -74,16 +74,23 @@ export async function POST() {
       continue
     }
 
+    // Parse name from RSVP to update guest record
+    const nameParts = rsvp.name.trim().split(" ")
+    const rsvpFirstName = nameParts[0]
+    const rsvpLastName = nameParts.slice(1).join(" ") || null
+
     // Build children_dietary string from children array
     const childrenDietary = (rsvp.children ?? [])
       .map(c => c.dietary)
       .filter(Boolean)
       .join(", ") || null
 
-    // Update main guest
+    // Update main guest (including name from RSVP)
     await supabase
       .from("guests")
       .update({
+        first_name: rsvpFirstName,
+        last_name: rsvpLastName,
         rsvp_status: rsvp.attending ? "Accepted" : "Declined",
         dietary_requirement: normalizeDietary(rsvp.dietary_requirements),
         children_count: rsvp.children?.length ?? 0,

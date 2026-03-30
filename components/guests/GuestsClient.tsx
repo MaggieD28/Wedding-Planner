@@ -441,7 +441,7 @@ export default function GuestsClient({ initialGuests }: Props) {
               <GSelect label="Side" value={formData.side ?? "Bride"} onChange={v => setFormData(p => ({ ...p, side: v as "Bride"|"Groom" }))} options={ALL_SIDES} />
               <GSelect label="RSVP status" value={formData.rsvp_status ?? "Pending"} onChange={v => setFormData(p => ({ ...p, rsvp_status: v as Guest["rsvp_status"] }))} options={ALL_RSVP} />
               <GField label="RSVP date" value={formData.rsvp_date ?? ""} onChange={v => setFormData(p => ({ ...p, rsvp_date: v || null }))} type="date" />
-              <GSelect label="Dietary requirement" value={formData.dietary_requirement ?? ""} onChange={v => setFormData(p => ({ ...p, dietary_requirement: v || null }))} options={["", ...ALL_DIETARY]} />
+              <GField label="Dietary requirement" value={formData.dietary_requirement ?? ""} onChange={v => setFormData(p => ({ ...p, dietary_requirement: v || null }))} placeholder="e.g. Vegetarian, Gluten Free, No seafood…" />
               <div className="col-span-2">
                 <GField label="Allergies / notes" value={formData.allergies_notes ?? ""} onChange={v => setFormData(p => ({ ...p, allergies_notes: v || null }))} />
               </div>
