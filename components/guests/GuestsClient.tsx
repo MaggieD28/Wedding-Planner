@@ -485,115 +485,210 @@ export default function GuestsClient({ initialGuests }: Props) {
       )}
 
       {/* Manual Match Modal */}
-      {matchTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(74,87,89,0.4)" }}>
-          <div className="rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden" style={{ backgroundColor: "white" }}>
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b" style={{ borderColor: "var(--color-sage-light)" }}>
-              <h2 className="text-2xl font-medium" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
-                Match RSVP to Guest
-              </h2>
-              <button onClick={() => { setMatchTarget(null); setMatchGuestIds([]); setMatchSearch("") }}>
-                <X size={20} style={{ color: "var(--color-subtle)" }} />
-              </button>
-            </div>
+      {matchTarget && (() => {
+        // Pre-compute names from the RSVP for the preview panel
+        const primaryParts = matchTarget.name.trim().split(" ")
+        const primaryFirst = primaryParts[0]
+        const primaryLast  = primaryParts.slice(1).join(" ") || null
+        const plusParts = matchTarget.plus_one_name ? matchTarget.plus_one_name.trim().split(" ") : []
+        const plusFirst = plusParts[0] ?? null
+        const plusLast  = plusParts.slice(1).join(" ") || null
 
-            <div className="flex divide-x" style={{ borderColor: "var(--color-sage-light)" }}>
-              {/* Left: RSVP details */}
-              <div className="flex-1 p-5 text-sm space-y-2" style={{ color: "var(--color-charcoal)" }}>
-                <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: "var(--color-subtle)" }}>RSVP from website</p>
-                <p><strong>{matchTarget.name}</strong></p>
-                {matchTarget.email && <p style={{ color: "var(--color-subtle)" }}>{matchTarget.email}</p>}
-                <p>
-                  <span style={{ color: matchTarget.attending ? "var(--color-sage)" : "var(--color-warm-red)" }}>
-                    {matchTarget.attending ? "Attending" : "Declined"}
-                  </span>
-                  {matchTarget.guest_count > 1 && ` · ${matchTarget.guest_count} guests`}
-                </p>
-                {matchTarget.dietary_requirements && (
-                  <p style={{ color: "var(--color-subtle)" }}>Dietary: {matchTarget.dietary_requirements}</p>
-                )}
-                {matchTarget.plus_one && matchTarget.plus_one_name && (
-                  <p style={{ color: "var(--color-subtle)" }}>
-                    +1: {matchTarget.plus_one_name}
-                    {matchTarget.plus_one_dietary && ` (${matchTarget.plus_one_dietary})`}
-                  </p>
-                )}
-                {matchTarget.children && matchTarget.children.length > 0 && (
-                  <p style={{ color: "var(--color-subtle)" }}>{matchTarget.children.length} child{matchTarget.children.length !== 1 ? "ren" : ""}</p>
-                )}
+        // For each selected guest, compute what name will be written
+        const nameMap = matchGuestIds.map((gid, i) => {
+          const g = guests.find(x => x.id === gid)
+          if (!g) return null
+          const newFirst = i === 0 ? primaryFirst : (i === 1 && plusFirst ? plusFirst : primaryFirst)
+          const newLast  = i === 0 ? primaryLast  : (i === 1 && plusFirst ? plusLast  : primaryLast)
+          const currentName = `${g.first_name}${g.last_name ? " " + g.last_name : ""}`
+          const newName     = `${newFirst}${newLast ? " " + newLast : ""}`
+          return { currentName, newName, same: currentName === newName }
+        }).filter(Boolean) as { currentName: string; newName: string; same: boolean }[]
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(74,87,89,0.4)" }}>
+            <div className="rounded-2xl shadow-xl w-full max-w-lg overflow-hidden" style={{ backgroundColor: "white" }}>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: "#2d6a4f" }}>
+                <h2 className="text-base font-semibold" style={{ color: "white" }}>
+                  🔗 Match RSVP to Guest Records
+                </h2>
+                <button onClick={() => { setMatchTarget(null); setMatchGuestIds([]); setMatchSearch("") }}>
+                  <X size={18} style={{ color: "rgba(255,255,255,0.7)" }} />
+                </button>
               </div>
 
-              {/* Right: guest search */}
-              <div className="flex-1 p-5 flex flex-col gap-3">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-subtle)" }}>Select guest record(s)</p>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--color-subtle)" }}>Select one or more guests — 1st gets primary dietary, 2nd gets +1 dietary</p>
-                </div>
-                <div className="relative">
-                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-subtle)" }} />
-                  <input
-                    value={matchSearch}
-                    onChange={e => setMatchSearch(e.target.value)}
-                    placeholder="Search by name or email…"
-                    className="w-full pl-8 pr-3 py-2 rounded-lg text-sm border"
-                    style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}
-                  />
-                </div>
-                <div className="overflow-y-auto max-h-48 flex flex-col gap-1">
-                  {matchFilteredGuests.map(g => {
-                    const idx = matchGuestIds.indexOf(g.id)
-                    const isSelected = idx !== -1
-                    return (
-                      <button
-                        key={g.id}
-                        onClick={() => setMatchGuestIds(prev =>
-                          prev.includes(g.id) ? prev.filter(id => id !== g.id) : [...prev, g.id]
-                        )}
-                        className="text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between"
-                        style={{
-                          backgroundColor: isSelected ? "var(--color-sage-light)" : "transparent",
-                          color: "var(--color-charcoal)",
-                        }}
-                      >
-                        <span>
-                          <span className="font-medium">{g.first_name} {g.last_name ?? ""}</span>
-                          {g.email && <span className="ml-2 text-xs" style={{ color: "var(--color-subtle)" }}>{g.email}</span>}
-                        </span>
-                        {isSelected && (
-                          <span className="text-xs ml-2 shrink-0" style={{ color: "var(--color-sage)" }}>
-                            {idx === 0 ? "✓ primary" : idx === 1 ? "✓ +1" : `✓ #${idx + 1}`}
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
-                  {matchFilteredGuests.length === 0 && (
-                    <p className="text-xs py-2 text-center" style={{ color: "var(--color-subtle)" }}>No guests match.</p>
+              <div className="p-5 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
+
+                {/* RSVP source card */}
+                <div className="rounded-xl p-4" style={{ backgroundColor: "#f0f7f4", border: "1.5px solid #b7deca" }}>
+                  <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#2d6a4f" }}>From RSVP website</p>
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-lg font-bold" style={{ color: "#1a1a1a" }}>{matchTarget.name}</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: "#2d6a4f", color: "white" }}>
+                      {matchTarget.attending ? "Attending ✓" : "Declined ✗"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs" style={{ color: "#666" }}>
+                    {matchTarget.email && <span>📧 {matchTarget.email}</span>}
+                    {matchTarget.dietary_requirements && <span>🍽 {matchTarget.dietary_requirements}</span>}
+                    {matchTarget.children && matchTarget.children.length > 0 && (
+                      <span>👶 {matchTarget.children.length} child{matchTarget.children.length !== 1 ? "ren" : ""}</span>
+                    )}
+                  </div>
+                  {matchTarget.plus_one && matchTarget.plus_one_name && (
+                    <div className="flex items-baseline gap-2 mt-2 pt-2" style={{ borderTop: "1px dashed #b7deca" }}>
+                      <span className="text-xs font-bold uppercase" style={{ color: "#999" }}>+1</span>
+                      <span className="text-sm font-semibold" style={{ color: "#333" }}>{matchTarget.plus_one_name}</span>
+                      {matchTarget.plus_one_dietary && (
+                        <span className="text-xs" style={{ color: "#888" }}>🍽 {matchTarget.plus_one_dietary}</span>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-            </div>
 
-            <div className="flex justify-end gap-3 px-6 py-4 border-t" style={{ borderColor: "var(--color-sage-light)" }}>
-              <button
-                onClick={() => { setMatchTarget(null); setMatchGuestIds([]); setMatchSearch("") }}
-                className="px-5 py-2.5 rounded-xl text-sm"
-                style={{ color: "var(--color-subtle)" }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleMatch}
-                disabled={matchGuestIds.length === 0 || matching}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40"
-                style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}
-              >
-                {matching ? "Applying…" : matchGuestIds.length > 1 ? `Apply RSVP to ${matchGuestIds.length} guests` : "Apply RSVP"}
-              </button>
+                {/* Guest search + list */}
+                <div>
+                  <p className="text-xs mb-2" style={{ color: "var(--color-subtle)" }}>
+                    Select the guest record(s) this RSVP belongs to — 1st selected gets primary name &amp; dietary, 2nd gets +1 name &amp; dietary
+                  </p>
+                  <div className="relative mb-2">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-subtle)" }} />
+                    <input
+                      value={matchSearch}
+                      onChange={e => setMatchSearch(e.target.value)}
+                      placeholder="Search by name or email…"
+                      className="w-full pl-8 pr-3 py-2 rounded-lg text-sm border"
+                      style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto">
+                    {matchFilteredGuests.map(g => {
+                      const selIdx = matchGuestIds.indexOf(g.id)
+                      const isSelected = selIdx !== -1
+                      const tagLabel = selIdx === 0 ? "Primary" : selIdx === 1 ? "+1" : `#${selIdx + 1}`
+                      const tagColor = selIdx === 0 ? "#2d6a4f" : "#6b9e8a"
+
+                      // Compute what name will be written for this guest
+                      const newFirst = selIdx === 0 ? primaryFirst : (selIdx === 1 && plusFirst ? plusFirst : primaryFirst)
+                      const newLast  = selIdx === 0 ? primaryLast  : (selIdx === 1 && plusFirst ? plusLast  : primaryLast)
+                      const newName  = `${newFirst}${newLast ? " " + newLast : ""}`
+                      const currentName = `${g.first_name}${g.last_name ? " " + g.last_name : ""}`
+                      const nameWillChange = isSelected && currentName !== newName
+
+                      return (
+                        <button
+                          key={g.id}
+                          onClick={() => setMatchGuestIds(prev =>
+                            prev.includes(g.id) ? prev.filter(id => id !== g.id) : [...prev, g.id]
+                          )}
+                          className="text-left px-3 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-3"
+                          style={{
+                            border: isSelected ? `1.5px solid ${tagColor}` : "1.5px solid #e0e0e0",
+                            backgroundColor: isSelected ? (selIdx === 0 ? "#f0f7f4" : "#f5fbf8") : "white",
+                            color: "var(--color-charcoal)",
+                          }}
+                        >
+                          {/* Checkbox */}
+                          <div className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-xs font-bold"
+                            style={{
+                              border: `2px solid ${isSelected ? tagColor : "#ccc"}`,
+                              backgroundColor: isSelected ? tagColor : "white",
+                              color: "white",
+                            }}>
+                            {isSelected ? "✓" : ""}
+                          </div>
+                          {/* Name + meta */}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm">
+                              {g.first_name} {g.last_name ?? ""}
+                              {nameWillChange && (
+                                <span className="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#fef3c7", border: "1px solid #fbbf24", color: "#b45309" }}>
+                                  → {newName}
+                                </span>
+                              )}
+                              {isSelected && !nameWillChange && (
+                                <span className="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: "#d1fae5", border: "1px solid #6ee7b7", color: "#065f46" }}>
+                                  name unchanged ✓
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs" style={{ color: "var(--color-subtle)" }}>
+                              {g.guest_id}{g.email ? ` · ${g.email}` : ""}
+                            </div>
+                          </div>
+                          {/* Selection tag */}
+                          {isSelected && (
+                            <span className="text-xs font-bold uppercase px-2 py-0.5 rounded flex-shrink-0"
+                              style={{ backgroundColor: tagColor, color: "white", letterSpacing: "0.05em" }}>
+                              {tagLabel}
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                    {matchFilteredGuests.length === 0 && (
+                      <p className="text-xs py-3 text-center" style={{ color: "var(--color-subtle)" }}>No guests match.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Name mapping preview */}
+                {matchGuestIds.length > 0 && nameMap.length > 0 ? (
+                  <div className="rounded-xl p-4" style={{ backgroundColor: "#fffbeb", border: "1.5px solid #f59e0b" }}>
+                    <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#b45309" }}>
+                      ⟶ Name update preview
+                    </p>
+                    <div className="grid text-xs font-bold uppercase tracking-wider mb-1" style={{ gridTemplateColumns: "1fr 20px 1fr", color: "#aaa" }}>
+                      <span>Current name in database</span>
+                      <span></span>
+                      <span>Will be updated to</span>
+                    </div>
+                    {nameMap.map((row, i) => (
+                      <div key={i} className="grid items-center gap-1 mb-1.5" style={{ gridTemplateColumns: "1fr 20px 1fr" }}>
+                        <div className="px-3 py-2 rounded text-sm" style={{ backgroundColor: "#fef3c7", border: "1px solid #fbbf24", color: "#78350f" }}>
+                          {row.currentName}
+                        </div>
+                        <div className="text-center font-bold" style={{ color: "#b45309" }}>→</div>
+                        <div className="px-3 py-2 rounded text-sm font-bold" style={{ backgroundColor: "#f0f7f4", border: "1px solid #6ee7b7", color: "#064e3b" }}>
+                          {row.newName}
+                          {row.same && <span className="ml-1 font-normal text-xs" style={{ color: "#065f46" }}>(no change)</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl p-4 text-center text-sm" style={{ backgroundColor: "#fafafa", border: "1.5px solid #e0e0e0", color: "#aaa" }}>
+                    Select at least one guest above to preview which names will be updated
+                  </div>
+                )}
+
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end gap-3 px-5 py-4 border-t" style={{ borderColor: "var(--color-sage-light)" }}>
+                <button
+                  onClick={() => { setMatchTarget(null); setMatchGuestIds([]); setMatchSearch("") }}
+                  className="px-5 py-2.5 rounded-xl text-sm"
+                  style={{ color: "var(--color-subtle)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMatch}
+                  disabled={matchGuestIds.length === 0 || matching}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40"
+                  style={{ backgroundColor: "#2d6a4f", color: "white" }}
+                >
+                  {matching ? "Applying…" : matchGuestIds.length > 1 ? `✓ Apply RSVP to ${matchGuestIds.length} guests` : "✓ Apply RSVP"}
+                </button>
+              </div>
+
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
