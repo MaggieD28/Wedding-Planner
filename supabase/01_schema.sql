@@ -1,6 +1,9 @@
 -- ============================================================
--- Wedding Planner — Database Schema
--- Run this in the Supabase SQL Editor (supabase.com/dashboard)
+-- Wedding Planner — Database Schema (reference copy)
+-- ⚠️  DO NOT run this file manually to make changes.
+--     All schema changes should be made as new migration files
+--     in supabase/migrations/ — see README.md for the workflow.
+-- Last synced from live DB: 2026-03-21
 -- ============================================================
 
 -- ─── Settings ───────────────────────────────────────────────
@@ -50,6 +53,7 @@ create table if not exists guests (
   children_allergies   text,
   follow_up_notes      text,
   table_number         integer,
+  is_head_table        boolean default false,   -- added 2026-03-21
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
 );
@@ -169,6 +173,57 @@ create trigger budget_items_updated_at before update on budget_items for each ro
 create trigger invoices_updated_at   before update on invoices   for each row execute function update_updated_at();
 create trigger decisions_updated_at  before update on decisions  for each row execute function update_updated_at();
 create trigger settings_updated_at   before update on settings   for each row execute function update_updated_at();
+
+-- ─── Seating Tables ──────────────────────────────────────────
+-- (Added manually; captured 2026-03-21)
+create table if not exists seating_tables (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  capacity      integer not null default 10,
+  x             double precision,
+  y             double precision,
+  shape         text default 'CIRCLE',
+  is_head_table boolean default false,
+  created_at    timestamptz default now()
+);
+
+create table if not exists seats (
+  id       uuid primary key default gen_random_uuid(),
+  table_id uuid not null references seating_tables(id) on delete cascade,
+  guest_id uuid references guests(id) on delete set null
+);
+
+create table if not exists seating_constraints (
+  id         uuid primary key default gen_random_uuid(),
+  guest_a_id uuid not null references guests(id) on delete cascade,
+  guest_b_id uuid not null references guests(id) on delete cascade,
+  type       text not null,                   -- 'MUST_SIT_TOGETHER' | 'MUST_NOT_SIT_TOGETHER'
+  created_at timestamptz default now(),
+  unique(guest_a_id, guest_b_id)
+);
+
+create table if not exists room_config (
+  id              uuid primary key default gen_random_uuid(),
+  room_shape      text default 'RECTANGLE',
+  aspect_ratio    double precision default 1.5,
+  table_shape     text default 'CIRCLE',
+  seats_per_table integer default 10,
+  updated_at      timestamptz default now()
+);
+
+alter table seating_tables    enable row level security;
+alter table seats             enable row level security;
+alter table seating_constraints enable row level security;
+alter table room_config       enable row level security;
+
+create policy "auth full access" on seating_tables
+  for all using (auth.role() = 'authenticated');
+create policy "auth full access" on seats
+  for all using (auth.role() = 'authenticated');
+create policy "auth full access" on seating_constraints
+  for all using (auth.role() = 'authenticated');
+create policy "auth full access" on room_config
+  for all using (auth.role() = 'authenticated');
 
 -- ─── Realtime ────────────────────────────────────────────────
 -- Enable realtime on all tables (run in Supabase dashboard under Database > Replication,

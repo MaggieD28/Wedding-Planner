@@ -8,8 +8,21 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const rsvpDate = rsvp.created_at ? rsvp.created_at.split("T")[0] : null
 
+  // Parse names from RSVP
+  const primaryParts = rsvp.name.trim().split(" ")
+  const primaryFirstName = primaryParts[0]
+  const primaryLastName = primaryParts.slice(1).join(" ") || null
+
+  const plusParts = rsvp.plus_one_name ? rsvp.plus_one_name.trim().split(" ") : []
+  const plusFirstName = plusParts[0] ?? null
+  const plusLastName = plusParts.slice(1).join(" ") || null
+
   for (let i = 0; i < guestIds.length; i++) {
     const guestId = guestIds[i]
+
+    // Smart name assignment: 1st guest gets primary name, 2nd gets plus-one name
+    const firstName = i === 0 ? primaryFirstName : (i === 1 && plusFirstName ? plusFirstName : primaryFirstName)
+    const lastName = i === 0 ? primaryLastName : (i === 1 && plusFirstName ? plusLastName : primaryLastName)
 
     // Smart dietary split:
     // - 1st selected guest gets the primary RSVP dietary requirement
@@ -30,6 +43,9 @@ export async function POST(req: Request) {
         : null
 
     const { error } = await supabase.from("guests").update({
+      first_name: firstName,
+      last_name: lastName,
+      ...(i === 0 && rsvp.email ? { email: rsvp.email } : {}),
       rsvp_status: rsvp.attending ? "Accepted" : "Declined",
       dietary_requirement: dietary,
       children_count: childrenCount,

@@ -51,6 +51,7 @@ export async function POST() {
   let synced = 0
   let added = 0
   const unmatched: RsvpEntry[] = []
+  const errors: { guest: string; error: string }[] = []
 
   for (const rsvp of rsvps) {
     // Match by email first, then by name
@@ -93,11 +94,12 @@ export async function POST() {
       .join(", ") || null
 
     // Update main guest (including name from RSVP)
-    await supabase
+    const { error: updateError } = await supabase
       .from("guests")
       .update({
         first_name: rsvpFirstName,
         last_name: rsvpLastName,
+        ...(rsvp.email ? { email: rsvp.email } : {}),
         rsvp_status: rsvp.attending ? "Accepted" : "Declined",
         dietary_requirement: normalizeDietary(rsvp.dietary_requirements),
         children_count: rsvp.children?.length ?? 0,
@@ -107,6 +109,10 @@ export async function POST() {
       })
       .eq("id", matched.id)
 
+    if (updateError) {
+      errors.push({ guest: matched.guest_id, error: updateError.message })
+      continue
+    }
     synced++
 
     // Handle plus-one
@@ -123,7 +129,7 @@ export async function POST() {
       )
 
       if (existingPlusOne) {
-        await supabase
+        const { error: plusUpdateError } = await supabase
           .from("guests")
           .update({
             first_name: plusFirst,
@@ -134,7 +140,7 @@ export async function POST() {
             rsvp_synced: true,
           })
           .eq("id", existingPlusOne.id)
-        synced++
+        if (!plusUpdateError) synced++
       } else {
         // Generate next guest_id
         const maxNum = existingGuests.reduce((max, g) => {
@@ -170,5 +176,5 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ synced, added, unmatched, total: rsvps.length })
+  return NextResponse.json({ synced, added, unmatched, errors, total: rsvps.length })
 }
