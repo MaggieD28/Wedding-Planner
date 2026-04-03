@@ -211,8 +211,10 @@ export default function VendorsClient({ initialVendors, initialInvoices, fxRate 
             </div>
             <VField label="Contact name" value={vendorForm.contact_name ?? ""} onChange={v => setVendorForm(p => ({ ...p, contact_name: v || null }))} />
             <VField label="Email" value={vendorForm.email ?? ""} onChange={v => setVendorForm(p => ({ ...p, email: v || null }))} />
+            <VField label="Website" value={vendorForm.website ?? ""} onChange={v => setVendorForm(p => ({ ...p, website: v || null }))} />
             <VField label="Phone" value={vendorForm.phone ?? ""} onChange={v => setVendorForm(p => ({ ...p, phone: v || null }))} />
             <VField label="Contract value (€)" value={String(vendorForm.contract_value_eur ?? 0)} onChange={v => setVendorForm(p => ({ ...p, contract_value_eur: parseFloat(v) || 0 }))} type="number" />
+            <div className="col-span-2"><VField label="Address" value={vendorForm.address ?? ""} onChange={v => setVendorForm(p => ({ ...p, address: v || null }))} /></div>
             <div className="col-span-2"><VField label="Notes" value={vendorForm.notes ?? ""} onChange={v => setVendorForm(p => ({ ...p, notes: v || null }))} /></div>
             <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--color-charcoal)" }}>
               <input type="checkbox" checked={vendorForm.contract_signed ?? false} onChange={e => setVendorForm(p => ({ ...p, contract_signed: e.target.checked }))} />

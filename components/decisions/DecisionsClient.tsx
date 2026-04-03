@@ -150,6 +150,7 @@ export default function DecisionsClient({ initialDecisions }: Props) {
                   {["Maggie", "Bobby", "Both"].map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               </div>
+              <DField label="Category" value={formData.category ?? ""} onChange={field("category")} />
               <DTextarea label="Notes" value={formData.notes ?? ""} onChange={field("notes")} rows={2} />
               <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--color-charcoal)" }}>
                 <input type="checkbox" checked={formData.locked ?? false} onChange={e => setFormData(p => ({ ...p, locked: e.target.checked }))} />

@@ -3,6 +3,7 @@ export type TaskPriority = "High" | "Medium" | "Low"
 export type AssignedTo = "Maggie" | "Bobby" | "Both"
 export type RsvpStatus = "Invited" | "Accepted" | "Declined" | "Pending"
 export type GuestSide = "Bride" | "Groom"
+export type WeddingRole = "Bridesmaid" | "Groomsman" | "Best Man" | "Maid of Honour" | "Usher" | "Flower Girl" | "Ring Bearer" | "Other"
 
 export interface Task {
   id: string
@@ -43,6 +44,10 @@ export interface Guest {
   is_head_table: boolean
   rsvp_synced: boolean
   group_id: string | null
+  address: string | null
+  wedding_role: WeddingRole | null
+  gift_received: boolean
+  thank_you_sent: boolean
   created_at: string
   updated_at: string
 }
@@ -74,6 +79,8 @@ export interface Vendor {
   contract_signed: boolean
   contract_value_eur: number
   notes: string | null
+  website: string | null
+  address: string | null
   created_at: string
   updated_at: string
 }
@@ -104,6 +111,7 @@ export interface Decision {
   options_considered: string | null
   rationale: string | null
   owner: AssignedTo | null
+  category: string | null
   locked: boolean
   notes: string | null
   created_at: string

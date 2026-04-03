@@ -3,7 +3,9 @@
 import { useState, useMemo, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Plus, Search, X, Download, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
-import type { Guest } from "@/types/database"
+import type { Guest, WeddingRole } from "@/types/database"
+
+const ALL_WEDDING_ROLES: WeddingRole[] = ["Bridesmaid", "Groomsman", "Best Man", "Maid of Honour", "Usher", "Flower Girl", "Ring Bearer", "Other"]
 
 const RSVP_COLORS: Record<string, string> = {
   Accepted: "var(--color-sage)",
@@ -19,6 +21,7 @@ const ALL_DIETARY  = ["Vegetarian", "Vegan", "Pescatarian", "Gluten Free", "Othe
 const EMPTY_GUEST: Partial<Guest> = {
   first_name: "", last_name: "", side: "Bride", rsvp_status: "Pending",
   save_the_date_sent: false, invite_sent: false, children_count: 0,
+  gift_received: false, thank_you_sent: false,
 }
 
 interface UnmatchedRsvp {
@@ -438,7 +441,18 @@ export default function GuestsClient({ initialGuests }: Props) {
               <GField label="Last name" value={formData.last_name ?? ""} onChange={v => setFormData(p => ({ ...p, last_name: v || null }))} />
               <GField label="Email" value={formData.email ?? ""} onChange={v => setFormData(p => ({ ...p, email: v || null }))} />
               <GField label="Phone" value={formData.phone ?? ""} onChange={v => setFormData(p => ({ ...p, phone: v || null }))} />
+              <div className="col-span-2">
+                <GField label="Address" value={formData.address ?? ""} onChange={v => setFormData(p => ({ ...p, address: v || null }))} placeholder="Postal address for invitations" />
+              </div>
               <GSelect label="Side" value={formData.side ?? "Bride"} onChange={v => setFormData(p => ({ ...p, side: v as "Bride"|"Groom" }))} options={ALL_SIDES} />
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>Wedding role</label>
+                <select value={formData.wedding_role ?? ""} onChange={e => setFormData(p => ({ ...p, wedding_role: (e.target.value || null) as WeddingRole | null }))}
+                  className="w-full px-3 py-2 rounded-lg text-sm border appearance-none" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
+                  <option value="">None</option>
+                  {ALL_WEDDING_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
               <GSelect label="RSVP status" value={formData.rsvp_status ?? "Pending"} onChange={v => setFormData(p => ({ ...p, rsvp_status: v as Guest["rsvp_status"] }))} options={ALL_RSVP} />
               <GField label="RSVP date" value={formData.rsvp_date ?? ""} onChange={v => setFormData(p => ({ ...p, rsvp_date: v || null }))} type="date" />
               <GField label="Dietary requirement" value={formData.dietary_requirement ?? ""} onChange={v => setFormData(p => ({ ...p, dietary_requirement: v || null }))} placeholder="e.g. Vegetarian, Gluten Free, No seafood…" />
@@ -463,6 +477,21 @@ export default function GuestsClient({ initialGuests }: Props) {
                   <GField label="Children attending" value={String(formData.children_count ?? 0)} onChange={v => setFormData(p => ({ ...p, children_count: parseInt(v) || 0 }))} type="number" />
                   <GField label="Children dietary" value={formData.children_dietary ?? ""} onChange={v => setFormData(p => ({ ...p, children_dietary: v || null }))} />
                   <GField label="Children allergies" value={formData.children_allergies ?? ""} onChange={v => setFormData(p => ({ ...p, children_allergies: v || null }))} />
+                </div>
+              </div>
+
+              {/* Gift tracking section */}
+              <div className="col-span-2 pt-2 border-t" style={{ borderColor: "var(--color-sage-light)" }}>
+                <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: "var(--color-subtle)" }}>Gift tracking</p>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--color-charcoal)" }}>
+                    <input type="checkbox" checked={formData.gift_received ?? false} onChange={e => setFormData(p => ({ ...p, gift_received: e.target.checked }))} className="rounded" />
+                    Gift received
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--color-charcoal)" }}>
+                    <input type="checkbox" checked={formData.thank_you_sent ?? false} onChange={e => setFormData(p => ({ ...p, thank_you_sent: e.target.checked }))} className="rounded" />
+                    Thank you sent
+                  </label>
                 </div>
               </div>
 
