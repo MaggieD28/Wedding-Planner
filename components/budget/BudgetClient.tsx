@@ -210,7 +210,7 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
                     {catItems.map((item, idx) => {
                       const budget   = item.price_per_unit_eur * item.units
                       const variance = budget - item.actual_paid_eur
-                      const vendor   = vendors.find(v => v.vendor_id === item.vendor_id)
+                      const vendor   = vendors.find(v => v.id === item.vendor_id)
                       return (
                         <tr key={item.id} onClick={() => openEdit(item)} className="cursor-pointer transition-opacity"
                           style={{ borderBottom: idx < catItems.length - 1 ? "1px solid var(--color-sage-light)" : "none", opacity: item.active ? 1 : 0.4 }}>
@@ -332,7 +332,7 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
                 <select value={formData.vendor_id ?? ""} onChange={e => setFormData(p => ({ ...p, vendor_id: e.target.value || null }))}
                   className="w-full px-3 py-2 rounded-lg text-sm border appearance-none" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
                   <option value="">None</option>
-                  {vendors.map(v => <option key={v.vendor_id} value={v.vendor_id}>{v.vendor_name}</option>)}
+                  {vendors.map(v => <option key={v.id} value={v.id}>{v.vendor_name}</option>)}
                 </select>
               </div>
               <BField label="Units" value={String(formData.units ?? 1)} onChange={v => setFormData(p => ({ ...p, units: parseFloat(v) || 1 }))} type="number" />

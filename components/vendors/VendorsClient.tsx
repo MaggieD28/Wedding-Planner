@@ -165,7 +165,7 @@ export default function VendorsClient({ initialVendors, initialInvoices, fxRate 
               </thead>
               <tbody>
                 {invoices.map((inv, idx) => {
-                  const vendor = vendors.find(v => v.vendor_id === inv.vendor_id)
+                  const vendor = vendors.find(v => v.id === inv.vendor_id)
                   const isOverdue = !inv.paid && inv.due_date && inv.due_date < today
                   return (
                     <tr key={inv.id} onClick={() => { setEditInvoice(inv); setInvoiceForm({ ...inv }); setShowInvoiceModal(true) }}
@@ -234,7 +234,7 @@ export default function VendorsClient({ initialVendors, initialInvoices, fxRate 
               <select value={invoiceForm.vendor_id ?? ""} onChange={e => setInvoiceForm(p => ({ ...p, vendor_id: e.target.value || null }))}
                 className="w-full px-3 py-2 rounded-lg text-sm border appearance-none" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
                 <option value="">None</option>
-                {vendors.map(v => <option key={v.vendor_id} value={v.vendor_id}>{v.vendor_name}</option>)}
+                {vendors.map(v => <option key={v.id} value={v.id}>{v.vendor_name}</option>)}
               </select>
             </div>
             <VField label="Description *" value={invoiceForm.description ?? ""} onChange={v => setInvoiceForm(p => ({ ...p, description: v }))} />

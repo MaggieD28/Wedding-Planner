@@ -499,7 +499,21 @@ export default function GuestsClient({ initialGuests }: Props) {
                 <GField label="Follow-up notes" value={formData.follow_up_notes ?? ""} onChange={v => setFormData(p => ({ ...p, follow_up_notes: v || null }))} />
               </div>
               <div className="col-span-2">
-                <GField label="Head guest ID (for couples/families)" value={formData.head_guest_id ?? ""} onChange={v => setFormData(p => ({ ...p, head_guest_id: v || null }))} placeholder="e.g. G001" />
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>Head guest (for couples/families)</label>
+                <select
+                  value={formData.head_guest_id ?? ""}
+                  onChange={e => setFormData(p => ({ ...p, head_guest_id: e.target.value || null }))}
+                  className="w-full px-3 py-2 rounded-lg text-sm border appearance-none"
+                  style={{ borderColor: "var(--color-sage-light)", color: "var(--color-charcoal)" }}>
+                  <option value="">None</option>
+                  {guests
+                    .filter(g => g.id !== editGuest?.id)
+                    .map(g => (
+                      <option key={g.id} value={g.id}>
+                        {g.first_name} {g.last_name ?? ""} ({g.guest_id})
+                      </option>
+                    ))}
+                </select>
               </div>
             </div>
 
