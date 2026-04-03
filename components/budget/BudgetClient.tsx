@@ -337,8 +337,18 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
               </div>
               <BField label="Units" value={String(formData.units ?? 1)} onChange={v => setFormData(p => ({ ...p, units: parseFloat(v) || 1 }))} type="number" />
               <BField label="Price per unit (€)" value={String(formData.price_per_unit_eur ?? 0)} onChange={v => setFormData(p => ({ ...p, price_per_unit_eur: parseFloat(v) || 0 }))} type="number" />
-              <BField label="Actual invoiced (€)" value={String(formData.actual_invoiced_eur ?? 0)} onChange={v => setFormData(p => ({ ...p, actual_invoiced_eur: parseFloat(v) || 0 }))} type="number" />
-              <BField label="Actual paid (€)" value={String(formData.actual_paid_eur ?? 0)} onChange={v => setFormData(p => ({ ...p, actual_paid_eur: parseFloat(v) || 0 }))} type="number" />
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>Actual invoiced (€)</label>
+                <div className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-subtle)", backgroundColor: "rgba(74,87,89,0.04)" }}>
+                  €{(formData.actual_invoiced_eur ?? 0).toLocaleString()} <span className="text-xs">· auto-calculated</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-subtle)" }}>Actual paid (€)</label>
+                <div className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-subtle)", backgroundColor: "rgba(74,87,89,0.04)" }}>
+                  €{(formData.actual_paid_eur ?? 0).toLocaleString()} <span className="text-xs">· auto-calculated</span>
+                </div>
+              </div>
               <div className="col-span-2"><BField label="Notes" value={formData.notes ?? ""} onChange={v => setFormData(p => ({ ...p, notes: v || null }))} /></div>
               <label className="flex items-center gap-2 text-sm cursor-pointer col-span-2" style={{ color: "var(--color-charcoal)" }}>
                 <input type="checkbox" checked={formData.active ?? true} onChange={e => setFormData(p => ({ ...p, active: e.target.checked }))} />
