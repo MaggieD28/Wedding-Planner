@@ -182,7 +182,7 @@ export default function SeatingClient({
   const refreshGuests = useCallback(async () => {
     const { data } = await supabase
       .from("guests")
-      .select("id, guest_id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id, rsvp_synced, save_the_date_sent, invite_sent, invite_date, rsvp_date, dietary_requirement, allergies_notes, children_count, children_dietary, children_allergies, follow_up_notes, table_number, email, phone, created_at, updated_at")
+      .select("id, guest_id, first_name, last_name, side, head_guest_id, is_head_table, rsvp_status, group_id, rsvp_synced, save_the_date_sent, invite_sent, invite_date, rsvp_date, dietary_requirement, allergies_notes, children_count, children_dietary, children_allergies, follow_up_notes, email, phone, created_at, updated_at")
       .order("last_name")
     if (data) setGuests(data as GuestWithHeadTable[])
   }, [supabase])

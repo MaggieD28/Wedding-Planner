@@ -40,7 +40,6 @@ export interface Guest {
   children_dietary: string | null
   children_allergies: string | null
   follow_up_notes: string | null
-  table_number: number | null
   is_head_table: boolean
   rsvp_synced: boolean
   group_id: string | null
