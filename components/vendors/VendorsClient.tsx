@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Plus, X } from "lucide-react"
+import { Plus, X, Download } from "lucide-react"
 import type { Vendor, Invoice } from "@/types/database"
 
 const CATEGORIES = ["Venue", "Catering", "Photography", "Videography", "Flowers", "Music/DJ", "Band", "Hair/Makeup", "Transport", "Stationery", "Officiant", "Decor/Rentals", "Cake", "Rings", "Attire", "Decoration", "Coordination", "Other"]
@@ -73,6 +73,31 @@ export default function VendorsClient({ initialVendors, initialInvoices, fxRate 
     if (data) setInvoices(p => p.map(i => i.id === inv.id ? data as Invoice : i))
   }
 
+  function downloadVendorsCsv() {
+    const headers = ["ID", "Vendor Name", "Category", "Contact Name", "Email", "Phone", "Website", "Address", "Contract Signed", "Contract Value (€)", "Notes"]
+    const rows = vendors.map(v => [
+      v.vendor_id,
+      v.vendor_name,
+      v.category ?? "",
+      v.contact_name ?? "",
+      v.email ?? "",
+      v.phone ?? "",
+      v.website ?? "",
+      v.address ?? "",
+      v.contract_signed ? "Yes" : "No",
+      v.contract_value_eur,
+      v.notes ?? "",
+    ])
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "vendors.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const today = new Date().toISOString().split("T")[0]
   const totalOutstanding = invoices.filter(i => !i.paid).reduce((s, i) => s + i.amount_eur, 0)
   const totalPaid = invoices.filter(i => i.paid).reduce((s, i) => s + i.amount_eur, 0)
@@ -83,12 +108,22 @@ export default function VendorsClient({ initialVendors, initialInvoices, fxRate 
         <h1 className="text-5xl font-light" style={{ fontFamily: "var(--font-cormorant), Georgia, serif", color: "var(--color-charcoal)" }}>
           Vendors & Invoices
         </h1>
-        <button
-          onClick={() => tab === "vendors" ? (setEditVendor(null), setVendorForm({ contract_signed: false, contract_value_eur: 0 }), setShowVendorModal(true)) : (setEditInvoice(null), setInvoiceForm({ paid: false, amount_eur: 0 }), setShowInvoiceModal(true))}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium"
-          style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
-          <Plus size={15} /> Add {tab === "vendors" ? "vendor" : "invoice"}
-        </button>
+        <div className="flex items-center gap-2">
+          {tab === "vendors" && (
+            <button
+              onClick={downloadVendorsCsv}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium"
+              style={{ backgroundColor: "var(--color-blush)", color: "var(--color-charcoal)" }}>
+              <Download size={15} /> Export CSV
+            </button>
+          )}
+          <button
+            onClick={() => tab === "vendors" ? (setEditVendor(null), setVendorForm({ contract_signed: false, contract_value_eur: 0 }), setShowVendorModal(true)) : (setEditInvoice(null), setInvoiceForm({ paid: false, amount_eur: 0 }), setShowInvoiceModal(true))}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium"
+            style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
+            <Plus size={15} /> Add {tab === "vendors" ? "vendor" : "invoice"}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
