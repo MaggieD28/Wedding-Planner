@@ -28,11 +28,11 @@ const navItems = [
 ]
 
 interface SidebarProps {
-  seatingPlanUrl?: string // kept for backwards compatibility, no longer rendered
+  weddingDate?: string
   userEmail?: string
 }
 
-export default function Sidebar({ seatingPlanUrl, userEmail }: SidebarProps) {
+export default function Sidebar({ weddingDate, userEmail }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -56,7 +56,7 @@ export default function Sidebar({ seatingPlanUrl, userEmail }: SidebarProps) {
       {/* Logo / title */}
       <div className="px-6 pt-8 pb-6 border-b" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
         <p className="text-xs tracking-widest uppercase mb-1" style={{ color: "rgba(255,255,255,0.45)" }}>
-          15 August 2026
+          {weddingDate ?? "15 August 2026"}
         </p>
         <h1
           className="text-2xl text-white font-light leading-tight"

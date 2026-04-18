@@ -16,17 +16,20 @@ export default async function DashboardLayout({
     redirect("/login")
   }
 
-  // Fetch seating plan URL from settings
   const { data: settings } = await supabase
     .from("settings")
-    .select("value")
-    .eq("key", "seating_plan_url")
-    .single()
+    .select("key, value")
+    .in("key", ["wedding_date", "maggie_email", "bobby_email"])
+
+  const settingsMap = Object.fromEntries((settings ?? []).map(s => [s.key, s.value]))
+  const weddingDate = settingsMap["wedding_date"]
+    ? new Date(settingsMap["wedding_date"]).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : undefined
 
   return (
     <div className="flex min-h-screen">
       <Sidebar
-        seatingPlanUrl={settings?.value || undefined}
+        weddingDate={weddingDate}
         userEmail={user.email}
       />
       <main className="flex-1 overflow-auto">

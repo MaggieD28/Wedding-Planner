@@ -25,10 +25,12 @@ const ALL_ASSIGNEES  = ["Maggie", "Bobby", "Both"]
 interface Props {
   initialTasks: Task[]
   currentUserEmail: string
+  maggieEmail: string
+  bobbyEmail: string
   initialFilter?: string
 }
 
-export default function TasksClient({ initialTasks, currentUserEmail, initialFilter }: Props) {
+export default function TasksClient({ initialTasks, currentUserEmail, maggieEmail, bobbyEmail, initialFilter }: Props) {
   const supabase = createClient()
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
   const [, startTransition] = useTransition()
@@ -67,7 +69,7 @@ export default function TasksClient({ initialTasks, currentUserEmail, initialFil
 
   const today = new Date().toISOString().split("T")[0]
   const thirtyDaysOut = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-  const isMaggie = currentUserEmail.toLowerCase().includes("maggie")
+  const isMaggie = currentUserEmail.toLowerCase() === maggieEmail.toLowerCase()
 
   const filtered = useMemo(() => {
     let list = [...tasks]
