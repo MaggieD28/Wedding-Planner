@@ -43,8 +43,7 @@ export default function DecisionsClient({ initialDecisions }: Props) {
       const { data } = await supabase.from("decisions").update(formData).eq("id", editDecision.id).select().single()
       if (data) setDecisions(p => p.map(d => d.id === editDecision.id ? data as Decision : d))
     } else {
-      const maxId = decisions.reduce((max, d) => Math.max(max, parseInt(d.decision_id.replace("D", ""), 10) || 0), 0)
-      const { data } = await supabase.from("decisions").insert({ ...formData, decision_id: `D${String(maxId + 1).padStart(3, "0")}` }).select().single()
+      const { data } = await supabase.from("decisions").insert(formData).select().single()
       if (data) setDecisions(p => [...p, data as Decision])
     }
     setSaving(false); setShowModal(false)
