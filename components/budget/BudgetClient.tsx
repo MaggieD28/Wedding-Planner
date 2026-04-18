@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Plus, X, ChevronDown, ChevronRight } from "lucide-react"
+import { Plus, X, ChevronDown, ChevronRight, Download } from "lucide-react"
 import type { BudgetItem, Vendor } from "@/types/database"
 
 interface Props {
@@ -74,6 +74,34 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
     setShowModal(true)
   }
 
+  function downloadBudgetCsv() {
+    const headers = ["ID", "Category", "Description", "Vendor", "Units", "Price/Unit (€)", "Budget Total (€)", "Actual Invoiced (€)", "Actual Paid (€)", "Active", "Notes"]
+    const rows = items.map(i => {
+      const vendor = vendors.find(v => v.id === i.vendor_id)
+      return [
+        i.budget_item_id,
+        i.category,
+        i.description,
+        vendor?.vendor_name ?? "",
+        i.units,
+        i.price_per_unit_eur,
+        i.price_per_unit_eur * i.units,
+        i.actual_invoiced_eur,
+        i.actual_paid_eur,
+        i.active ? "Yes" : "No",
+        i.notes ?? "",
+      ]
+    })
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "budget.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function openAddCategory() {
     setNewCategoryName("")
     setCategoryModal(true)
@@ -139,6 +167,9 @@ export default function BudgetClient({ initialItems, vendors, fxRate }: Props) {
               </button>
             ))}
           </div>
+          <button onClick={downloadBudgetCsv} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm border" style={{ borderColor: "var(--color-sage-light)", color: "var(--color-subtle)" }}>
+            <Download size={14} /> Export CSV
+          </button>
           <button onClick={openAddCategory} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium" style={{ backgroundColor: "var(--color-sage)", color: "var(--color-charcoal)" }}>
             <Plus size={15} /> Add category
           </button>
